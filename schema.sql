@@ -11,6 +11,7 @@ CREATE TABLE public.meetings (
     latitude DOUBLE PRECISION, -- Geolocation support
     longitude DOUBLE PRECISION,
     radius_meters INTEGER DEFAULT 100, -- Default 100 meters
+    is_archived BOOLEAN DEFAULT FALSE,
     qr_token TEXT,
     qr_expiry TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { supabase } from '@/lib/supabase';
 import { QRCodeSVG } from 'qrcode.react';
-import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, MapPin } from 'lucide-react';
+import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, MapPin, Archive, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
 
 const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false, loading: () => <p>Loading Map...</p> });
@@ -24,6 +24,7 @@ export default function AdminDashboard() {
   const [createFormVisible, setCreateFormVisible] = useState(false);
   const [showFullScreenQR, setShowFullScreenQR] = useState(false);
   const [newMeetingLoc, setNewMeetingLoc] = useState({ lat: -7.9525, lng: 112.6145 });
+  const [showArchived, setShowArchived] = useState(false); // New state for archiving
 
   const handleGetCurrentLocation = () => {
     if ("geolocation" in navigator) {
@@ -55,13 +56,13 @@ export default function AdminDashboard() {
     const auth = localStorage.getItem('cssa_admin_auth');
     if (auth === 'true') setIsAuthenticated(true);
     fetchMeetings();
-  }, []);
+  }, [showArchived]); // Re-fetch on toggle
 
   useEffect(() => {
     if (!isAuthenticated) return;
     
     let interval: NodeJS.Timeout;
-    if (selectedMeeting) {
+    if (selectedMeeting && !selectedMeeting.is_archived) {
       fetchAttendance(selectedMeeting.id);
       setQrToken(selectedMeeting.qr_token || 'Initializing...');
       
@@ -94,12 +95,29 @@ export default function AdminDashboard() {
         clearInterval(interval);
         supabase.removeChannel(channel);
       };
+    } else if (selectedMeeting?.is_archived) {
+        fetchAttendance(selectedMeeting.id);
     }
   }, [selectedMeeting, isAuthenticated]);
 
   const fetchMeetings = async () => {
-    const { data } = await supabase.from('meetings').select('*').order('created_at', { ascending: false });
-    if (data) setMeetings(data);
+    let query = supabase.from('meetings').select('*').order('created_at', { ascending: false });
+    
+    // Default filter for non-archived, or explicit for archived
+    if (showArchived) {
+        query = query.is('is_archived', true);
+    } else {
+        // Handle null values as false for backward compatibility
+        query = query.or('is_archived.eq.false,is_archived.is.null');
+    }
+
+    const { data, error } = await query;
+    if (data) {
+        setMeetings(data);
+        // Clear selection if switching modes
+        setSelectedMeeting(null);
+    }
+    if (error) console.error("Error fetching meetings:", error);
   };
 
   const fetchAttendance = async (meetingId: string) => {
@@ -113,6 +131,9 @@ export default function AdminDashboard() {
   };
 
   const refreshQRToken = async (meetingId: string) => {
+    // No Refresh for Archived
+    if (showArchived) return;
+
     const newToken = crypto.randomUUID();
     const expiry = new Date(Date.now() + 60000 * 2); // Valid for 2 minutes to allow overlap.
     
@@ -122,6 +143,13 @@ export default function AdminDashboard() {
     }).eq('id', meetingId);
     
     setQrToken(newToken);
+  };
+
+  const handleArchive = async (meetingId: string, archive: boolean) => {
+    if (confirm(`Are you sure you want to ${archive ? 'archive' : 'restore'} this meeting?`)) {
+        await supabase.from('meetings').update({ is_archived: archive }).eq('id', meetingId);
+        fetchMeetings();
+    }
   };
 
   const handleCreateMeeting = async (e: React.FormEvent) => {
@@ -137,6 +165,7 @@ export default function AdminDashboard() {
       latitude: parseFloat(form.latitude.value),
       longitude: parseFloat(form.longitude.value),
       radius_meters: parseInt(form.radius.value),
+      is_archived: false,
       qr_token: crypto.randomUUID(), // Initial token
       qr_expiry: new Date(Date.now() + 60000 * 5).toISOString()
     }]);
@@ -269,31 +298,59 @@ export default function AdminDashboard() {
          
          <div className="p-6 flex-1 overflow-y-auto custom-scrollbar">
             <div className="flex justify-between items-center mb-6">
-               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Meetings</h3>
-               <button 
-                  onClick={() => setCreateFormVisible(true)} 
-                  className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-2 rounded-lg transition-colors border border-blue-200"
-                  title="Create Meeting"
-                >
-                  <PlusCircle size={18} />
-               </button>
+               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                   {showArchived ? 'Archived' : 'Active'} Meetings
+               </h3>
+               <div className="flex gap-2">
+                   <button 
+                      onClick={() => setShowArchived(!showArchived)} 
+                      className={`p-2 rounded-lg transition-colors border ${showArchived ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 border-slate-200'}`}
+                      title={showArchived ? "Show Active" : "Show Archived"}
+                    >
+                      {showArchived ? <RotateCcw size={18} /> : <Archive size={18} />}
+                   </button>
+                   {!showArchived && (
+                       <button 
+                          onClick={() => setCreateFormVisible(true)} 
+                          className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-2 rounded-lg transition-colors border border-blue-200"
+                          title="Create Meeting"
+                        >
+                          <PlusCircle size={18} />
+                       </button>
+                   )}
+               </div>
             </div>
             
             <div className="space-y-3">
               {meetings.map((meeting) => (
                 <div 
                   key={meeting.id}
-                  onClick={() => setSelectedMeeting(meeting)}
-                  className={`group p-4 rounded-xl cursor-pointer transition-all border relative overflow-hidden
+                  className={`group p-4 rounded-xl transition-all border relative overflow-hidden flex flex-col
                     ${selectedMeeting?.id === meeting.id 
                       ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 border-blue-500 translate-x-2' 
                       : 'bg-white hover:bg-slate-50 border-slate-100 hover:border-slate-300 hover:shadow-sm'
                     }`}
                 >
-                  <h4 className={`font-semibold ${selectedMeeting?.id === meeting.id ? 'text-white' : 'text-slate-700'}`}>{meeting.title}</h4>
-                  <div className={`text-xs mt-2 flex justify-between items-center ${selectedMeeting?.id === meeting.id ? 'text-blue-100' : 'text-slate-400'}`}>
-                    <span className="flex items-center gap-1"><Users size={12}/> {meeting.date}</span>
-                    <span className="bg-white/20 px-2 py-0.5 rounded text-[10px]">{meeting.start_time}</span>
+                  <div className="cursor-pointer" onClick={() => setSelectedMeeting(meeting)}>
+                      <h4 className={`font-semibold ${selectedMeeting?.id === meeting.id ? 'text-white' : 'text-slate-700'}`}>{meeting.title}</h4>
+                      <div className={`text-xs mt-2 flex justify-between items-center ${selectedMeeting?.id === meeting.id ? 'text-blue-100' : 'text-slate-400'}`}>
+                        <span className="flex items-center gap-1"><Users size={12}/> {meeting.date}</span>
+                        <span className="bg-white/20 px-2 py-0.5 rounded text-[10px]">{meeting.start_time}</span>
+                      </div>
+                  </div>
+                  
+                  {/* Archive Action Button */}
+                  <div className={`mt-3 pt-3 border-t ${selectedMeeting?.id === meeting.id ? 'border-white/20' : 'border-slate-100'} flex justify-end`}>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleArchive(meeting.id, !meeting.is_archived); }}
+                        className={`text-[10px] uppercase font-bold px-2 py-1 rounded flex items-center gap-1 transition-colors
+                           ${selectedMeeting?.id === meeting.id 
+                             ? 'bg-white/10 text-white hover:bg-white/20' 
+                             : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                      >
+                         {meeting.is_archived ? <RotateCcw size={10} /> : <Archive size={10} />}
+                         {meeting.is_archived ? 'Restore' : 'Archive'}
+                      </button>
                   </div>
                 </div>
               ))}

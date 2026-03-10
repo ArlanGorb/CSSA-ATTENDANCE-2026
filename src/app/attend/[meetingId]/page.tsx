@@ -61,23 +61,34 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
     setLoading(true);
     setError(null);
     setStatus(null);
+    
     const form = e.target as HTMLFormElement;
     
     // Get Location
     let location = { lat: 0, lng: 0 };
     try {
         const pos: GeolocationPosition = await new Promise((resolve, reject) => {
-            if (!navigator.geolocation) reject(new Error('Geolocation is not supported'));
+            if (!navigator.geolocation) {
+                reject(new Error('Geolocation is not supported by your browser'));
+                return;
+            }
+            
+            // Timeout increased to 15s to allow GPS verify
             navigator.geolocation.getCurrentPosition(resolve, reject, {
                 enableHighAccuracy: true,
-                timeout: 5000,
+                timeout: 15000, 
                 maximumAge: 0
             });
         });
         location = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-    } catch (error) {
-        console.error(error);
-        setError('Location access is required. Please enable GPS.');
+    } catch (error: any) {
+        console.error("Geolocation Error:", error);
+        let msg = 'Location access is required. Please enable GPS.';
+        if (error.code === 1) msg = 'Location permission denied. Please allow access.';
+        if (error.code === 2) msg = 'Location unavailable. Check your GPS signal.';
+        if (error.code === 3) msg = 'GPS timeout. Please move to an open area and try again.';
+        
+        setError(msg);
         setLoading(false);
         return;
     }
