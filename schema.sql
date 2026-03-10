@@ -38,6 +38,7 @@ ALTER TABLE public.attendance ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Enable read access for all users" ON public.meetings FOR SELECT USING (true);
 CREATE POLICY "Enable insert for all users" ON public.meetings FOR INSERT WITH CHECK (true);
 CREATE POLICY "Enable update for all users" ON public.meetings FOR UPDATE USING (true);
+CREATE POLICY "Enable delete for all users" ON public.meetings FOR DELETE USING (true);
 
 CREATE POLICY "Enable read access for all users" ON public.attendance FOR SELECT USING (true);
 CREATE POLICY "Enable insert for all users" ON public.attendance FOR INSERT WITH CHECK (true);

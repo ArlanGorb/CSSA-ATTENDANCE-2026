@@ -6,8 +6,6 @@ import { QRCodeSVG } from 'qrcode.react';
 import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, MapPin, Archive, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
 
-const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false, loading: () => <p>Loading Map...</p> });
-
 const DIVISIONS = [
   "Officer", "Kerohanian", "Mulmed", "Senat Angkatan", 
   "Olahraga", "Humas", "Keamanan", "Pendidikan", "Parlemanterian"
@@ -23,23 +21,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [createFormVisible, setCreateFormVisible] = useState(false);
   const [showFullScreenQR, setShowFullScreenQR] = useState(false);
-  const [newMeetingLoc, setNewMeetingLoc] = useState({ lat: -7.9525, lng: 112.6145 });
   const [showArchived, setShowArchived] = useState(false); // New state for archiving
-
-  const handleGetCurrentLocation = () => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(function(position) {
-        setNewMeetingLoc({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        });
-      }, function(error) {
-         alert("Error getting location: " + error.message);
-      });
-    } else {
-      alert("Geolocation is not available");
-    }
-  };
 
   // Simple Auth Check
   const handleLogin = (e: React.FormEvent) => {
@@ -174,9 +156,6 @@ export default function AdminDashboard() {
       date: form.date.value,
       start_time: form.startTime.value,
       attendance_limit_minutes: parseInt(form.limit.value),
-      latitude: parseFloat(form.latitude.value),
-      longitude: parseFloat(form.longitude.value),
-      radius_meters: parseInt(form.radius.value),
       is_archived: false,
       qr_token: crypto.randomUUID(), // Initial token
       qr_expiry: new Date(Date.now() + 60000 * 5).toISOString()
@@ -425,56 +404,6 @@ export default function AdminDashboard() {
                     <div>
                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Late Limit (min)</label>
                        <input name="limit" type="number" defaultValue={15} required className="w-full bg-slate-50 border border-slate-200 p-3 rounded-lg focus:ring-2 ring-blue-500 outline-none transition" />
-                    </div>
-                    <div>
-                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Latitude</label>
-                       <div className="relative">
-                           <input 
-                              name="latitude" 
-                              type="number" 
-                              step="any" 
-                              value={newMeetingLoc.lat}
-                              onChange={(e) => setNewMeetingLoc({...newMeetingLoc, lat: parseFloat(e.target.value)})} 
-                              required 
-                              className="w-full bg-slate-50 border border-slate-200 p-3 rounded-lg focus:ring-2 ring-blue-500 outline-none transition" 
-                            />
-                       </div>
-                    </div>
-                    <div>
-                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Longitude</label>
-                       <div className="relative">
-                           <input 
-                              name="longitude" 
-                              type="number" 
-                              step="any" 
-                              value={newMeetingLoc.lng}
-                              onChange={(e) => setNewMeetingLoc({...newMeetingLoc, lng: parseFloat(e.target.value)})} 
-                              required 
-                              className="w-full bg-slate-50 border border-slate-200 p-3 rounded-lg focus:ring-2 ring-blue-500 outline-none transition" 
-                            />
-                       </div>
-                    </div>
-                    <div className="col-span-full space-y-3">
-                       <div className="flex gap-2">
-                           <button 
-                             type="button" 
-                             onClick={handleGetCurrentLocation}
-                             className="flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-2 rounded-lg transition-colors border border-blue-200 w-fit"
-                           >
-                             <MapPin size={14} /> My Location
-                           </button>
-                           <span className="text-xs text-slate-400 py-2">Click map to adjust pin</span>
-                       </div>
-                       
-                       <MapPicker 
-                          lat={newMeetingLoc.lat} 
-                          lng={newMeetingLoc.lng} 
-                          onChange={(pos) => setNewMeetingLoc(pos)} 
-                       />
-                    </div>
-                    <div>
-                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Radius (Meters)</label>
-                       <input name="radius" type="number" defaultValue="100" required className="w-full bg-slate-50 border border-slate-200 p-3 rounded-lg focus:ring-2 ring-blue-500 outline-none transition" />
                     </div>
                     <div className="col-span-full flex justify-end gap-3 mt-4 pt-4 border-t border-slate-100">
                       <button type="button" onClick={() => setCreateFormVisible(false)} className="px-6 py-3 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition">Cancel</button>

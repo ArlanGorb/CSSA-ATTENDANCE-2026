@@ -28,18 +28,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'QR Code expired. Refresh and scan again.' }, { status: 400 });
     }
 
-    // Check Geolocation (New)
-    if (meeting.latitude && meeting.longitude && meeting.radius_meters) {
-      if (!latitude || !longitude) {
-         return NextResponse.json({ error: 'Location required. Enable GPS.' }, { status: 400 });
-      }
-      
-      const distance = getDistanceFromLatLonInMeters(meeting.latitude, meeting.longitude, latitude, longitude);
-      if (distance > meeting.radius_meters) {
-         return NextResponse.json({ error: `You are too far (${Math.round(distance)}m). Must be within ${meeting.radius_meters}m.` }, { status: 400 });
-      }
-    }
-
     // 2. Check if user already attended
     const { data: existing } = await supabase
       .from('attendance')
@@ -119,20 +107,3 @@ export async function POST(request: Request) {
   }
 }
 
-function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
-  var R = 6371e3; // Radius of the earth in km
-  var dLat = deg2rad(lat2-lat1);  // deg2rad below
-  var dLon = deg2rad(lon2-lon1); 
-  var a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2)
-    ; 
-  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-  var d = R * c; // Distance in km
-  return d;
-}
-
-function deg2rad(deg: number) {
-  return deg * (Math.PI/180)
-}
