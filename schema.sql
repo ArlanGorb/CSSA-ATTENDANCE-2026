@@ -45,3 +45,17 @@ CREATE POLICY "Enable delete for all users" ON public.meetings FOR DELETE USING 
 CREATE POLICY "Enable read access for all users" ON public.attendance FOR SELECT USING (true);
 CREATE POLICY "Enable insert for all users" ON public.attendance FOR INSERT WITH CHECK (true);
 CREATE POLICY "Enable update for all users" ON public.attendance FOR UPDATE USING (true);
+
+-- Create User Profiles (For Face AI)
+CREATE TABLE public.user_profiles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT UNIQUE NOT NULL,
+    division TEXT NOT NULL,
+    face_descriptor JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable read access for all users" ON public.user_profiles FOR SELECT USING (true);
+CREATE POLICY "Enable insert for all users" ON public.user_profiles FOR INSERT WITH CHECK (true);
+CREATE POLICY "Enable update for all users" ON public.user_profiles FOR UPDATE USING (true);
