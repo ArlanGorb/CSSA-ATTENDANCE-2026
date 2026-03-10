@@ -5,7 +5,7 @@ import { differenceInMinutes, parseISO, set } from 'date-fns';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { meetingId, token, name, division, latitude, longitude } = body;
+    const { meetingId, token, name, division, deviceId } = body;
 
     // 1. Verify Meeting & Token
     const { data: meeting, error: meetingError } = await supabase
@@ -90,12 +90,32 @@ export async function POST(request: Request) {
         // Usually fine, but maybe 'Hadir'.
     }
 
+    // Check device ID for duplicates in the same meeting
+    let is_suspicious = false;
+    if (deviceId) {
+       const { data: deviceCheck } = await supabase
+         .from('attendance')
+         .select('id')
+         .eq('meeting_id', meetingId)
+         .eq('device_id', deviceId)
+         .limit(1);
+         
+       if (deviceCheck && deviceCheck.length > 0) {
+         is_suspicious = true;
+         console.warn(`Suspicious: Multiple attendance from same device (${deviceId}) for meeting ${meetingId}`);
+         // Still allow submission but flag it. 
+         // Optional: return Error here to completely block multiple submissions from one device.
+       }
+    }
+
     // 4. Insert Record
     const { error: insertError } = await supabase.from('attendance').insert([{
       meeting_id: meetingId,
       name,
       division,
-      status
+      status,
+      device_id: deviceId,
+      is_suspicious
     }]);
 
     if (insertError) throw insertError;

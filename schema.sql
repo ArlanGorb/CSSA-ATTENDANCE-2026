@@ -24,6 +24,8 @@ CREATE TABLE public.attendance (
     name TEXT NOT NULL,
     division TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('Hadir', 'Late', 'Izin', 'Sakit', 'Alfa')),
+    device_id TEXT, -- NEW: Store fingerprint ID to detect multiple logins from same device
+    is_suspicious BOOLEAN DEFAULT FALSE, -- NEW: Flag for suspicious activity (e.g. proxying)
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(meeting_id, name) -- Prevent double submission by name for same meeting

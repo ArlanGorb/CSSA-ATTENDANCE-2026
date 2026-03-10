@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CheckCircle, AlertOctagon, ScanLine, Camera, XCircle } from 'lucide-react';
+import fpPromise from '@fingerprintjs/fingerprintjs';
 
 const DIVISIONS = [
   "Officer", "Kerohanian", "Mulmed", "Senat Angkatan", 
@@ -20,10 +21,21 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   const [showCamera, setShowCamera] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [formData, setFormData] = useState<any>(null);
+  const [deviceId, setDeviceId] = useState<string>('');
+  const [showBreachAlert, setShowBreachAlert] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowSplash(false), 2500);
+    
+    // Initialize Fingerprint
+    const initFingerprint = async () => {
+      const fp = await fpPromise.load();
+      const result = await fp.get();
+      setDeviceId(result.visitorId);
+    };
+    initFingerprint();
+
     return () => clearTimeout(timer);
   }, []);
 
@@ -120,14 +132,20 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
           token,
           name: formData.name,
           division: formData.division,
+          deviceId: deviceId, // Send device fingerprint
         })
       });
-      
+
       const data = await res.json();
       if (res.ok) {
         setStatus(`Attendance recorded: ${data.status}`);
       } else {
-        setError(data.error);
+        // If the error message mentions multiple submissions from this device or user
+        if (data.error.includes("already submitted")) {
+            setShowBreachAlert(true);
+        } else {
+            setError(data.error);
+        }
         setShowCamera(false); // Go back to form or show error clearly
         setScanning(false);
       }
@@ -146,6 +164,30 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
         <AlertOctagon size={48} className="text-red-500 mb-4" />
         <h1 className="text-xl font-bold text-gray-900 mb-2">Invalid Access</h1>
         <p className="text-gray-500">Please scan the QR code provided by the Admin.</p>
+      </div>
+    );
+  }
+
+  if (showBreachAlert) {
+    return (
+      <div className="fixed inset-0 z-50 bg-red-950 flex flex-col items-center justify-center text-white overflow-hidden">
+        {/* Sirens/Alarms */}
+        <div className="absolute inset-0 bg-red-600/20 animate-[pulse_0.5s_infinite]"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200vw] h-[200vw] bg-[radial-gradient(circle,rgba(255,0,0,0.8)_0%,transparent_70%)] opacity-30 animate-ping"></div>
+        
+        <div className="relative z-10 flex flex-col items-center text-center">
+          <AlertOctagon size={100} className="text-red-500 mb-6 drop-shadow-[0_0_30px_rgba(239,68,68,1)] animate-bounce" />
+          <h1 className="text-6xl font-black tracking-widest text-red-500 mb-2 uppercase" style={{ textShadow: '0 0 20px red' }}>
+            SECURITY BREACH
+          </h1>
+          <p className="text-xl text-red-300 font-mono tracking-wide uppercase max-w-md bg-black/50 p-4 border border-red-500/50 mt-4 rounded-lg">
+            Multiple check-ins detected <br/> from a single device footprint.
+          </p>
+          <div className="mt-12 text-sm text-red-400 font-mono flex items-center gap-2 opacity-70">
+            <span className="w-2 h-2 bg-red-500 rounded-full animate-ping"></span>
+            INCIDENT LOGGED [DEVICE_ID: {deviceId.substring(0,8)}...]
+          </div>
+        </div>
       </div>
     );
   }
