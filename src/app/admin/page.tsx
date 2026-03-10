@@ -68,10 +68,10 @@ export default function AdminDashboard() {
         )
         .subscribe();
 
-      // Refresh QR every 60s
+      // Refresh QR every 5 mins (300000ms)
       interval = setInterval(() => {
         refreshQRToken(selectedMeeting.id);
-      }, 60000);
+      }, 300000);
 
       return () => {
         clearInterval(interval);
@@ -117,7 +117,7 @@ export default function AdminDashboard() {
     if (showArchived) return;
 
     const newToken = crypto.randomUUID();
-    const expiry = new Date(Date.now() + 60000 * 2); // Valid for 2 minutes to allow overlap.
+    const expiry = new Date(Date.now() + 60000 * 5); // Valid for 5 minutes.
     
     await supabase.from('meetings').update({ 
       qr_token: newToken, 
@@ -432,7 +432,7 @@ export default function AdminDashboard() {
                           </div>
                           <div className="mt-10 flex items-center gap-3 px-6 py-3 bg-blue-50 text-blue-700 rounded-full font-semibold text-sm">
                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                             Token refreshes automatically every 60s
+                             Token refreshes automatically every 5 minutes
                           </div>
                        </div>
                     </div>
@@ -449,7 +449,7 @@ export default function AdminDashboard() {
                         </div>
                         <div className="w-full">
                            <h3 className="text-lg font-bold text-slate-800 text-center mb-1">Scan for Attendance</h3>
-                           <p className="text-xs text-center text-slate-400 mb-4">Auto-refreshes every 60s</p>
+                           <p className="text-xs text-center text-slate-400 mb-4">Auto-refreshes every 5 mins</p>
                            <div className="grid grid-cols-2 gap-2">
                              <a 
                                 href={attendanceUrl} 
