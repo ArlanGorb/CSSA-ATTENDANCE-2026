@@ -141,7 +141,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
         setStatus(`Attendance recorded: ${data.status}`);
       } else {
         // If the error message mentions multiple submissions from this device or user
-        if (data.error.includes("already submitted")) {
+        if (data.error && data.error.includes("already submitted")) {
             setShowBreachAlert(true);
         } else {
             setError(data.error);

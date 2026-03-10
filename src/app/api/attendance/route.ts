@@ -103,8 +103,8 @@ export async function POST(request: Request) {
        if (deviceCheck && deviceCheck.length > 0) {
          is_suspicious = true;
          console.warn(`Suspicious: Multiple attendance from same device (${deviceId}) for meeting ${meetingId}`);
-         // Still allow submission but flag it. 
-         // Optional: return Error here to completely block multiple submissions from one device.
+         // Block multiple submissions from one device
+         return NextResponse.json({ error: 'SECURITY BREACH: This device has already submitted attendance.' }, { status: 403 });
        }
     }
 
