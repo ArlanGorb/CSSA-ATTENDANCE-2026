@@ -3,10 +3,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CheckCircle, AlertOctagon, ScanLine, Camera, XCircle } from 'lucide-react';
 import fpPromise from '@fingerprintjs/fingerprintjs';
-import * as faceapi from 'face-api.js';
 
 const DIVISIONS = [
-  "Officer", "Kerohanian", "Mulmed", "Senat Angkatan", 
+  "Officer", "Kerohanian", "Mulmed", "Senat Angkatan",
   "Olahraga", "Humas", "Keamanan", "Pendidikan", "Parlemanterian"
 ];
 
@@ -24,8 +23,6 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   const [formData, setFormData] = useState<any>(null);
   const [deviceId, setDeviceId] = useState<string>('');
   const [showBreachAlert, setShowBreachAlert] = useState(false);
-  const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [faceDescriptor, setFaceDescriptor] = useState<number[] | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -38,21 +35,6 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
       setDeviceId(result.visitorId);
     };
     initFingerprint();
-
-    // Initialize Face API Models
-    const loadModels = async () => {
-      try {
-        await Promise.all([
-          faceapi.nets.ssdMobilenetv1.loadFromUri('/models'),
-          faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
-          faceapi.nets.faceRecognitionNet.loadFromUri('/models')
-        ]);
-        setModelsLoaded(true);
-      } catch (err) {
-        console.error("Failed to load face models:", err);
-      }
-    };
-    loadModels();
   }, []);
 
   if (showSplash) {
@@ -125,35 +107,17 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
     setScanning(false);
   };
 
-  const handleScan = async () => {
-    if (!modelsLoaded || !videoRef.current) {
-        setError("Models not fully loaded yet. Please wait.");
-        return;
-    }
+const handleScan = () => {
     setScanning(true);
     setError(null);
-    
-    // Real face detection
-    const detection = await faceapi.detectSingleFace(
-      videoRef.current,
-      new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 })
-    ).withFaceLandmarks().withFaceDescriptor();
 
-    if (!detection) {
-        setError("No face detected. Please align your face inside the frame.");
-        setScanning(false);
-        return;
-    }
-
-    const descriptorArray = Array.from(detection.descriptor);
-    setFaceDescriptor(descriptorArray);
-
+    // Mock scan delay for UI purposes (Fake AI Validation)
     setTimeout(() => {
-      executeAttendanceSubmit(descriptorArray);
-    }, 1000); // give a bit of time to show the scanner completing
+      executeAttendanceSubmit();
+    }, 2000); // 2 second delay to simulate scanning
   };
 
-  const executeAttendanceSubmit = async (descriptorArray: number[]) => {
+  const executeAttendanceSubmit = async () => {
     stopCamera();
     setLoading(true);
     setError(null);
@@ -169,7 +133,6 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
           name: formData.name,
           division: formData.division,
           deviceId: deviceId, // Send device fingerprint
-          faceDescriptor: descriptorArray, // Send face descriptor for AI validation
         })
       });
 

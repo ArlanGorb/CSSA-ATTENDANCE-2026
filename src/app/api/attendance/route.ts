@@ -2,20 +2,10 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { differenceInMinutes, parseISO, set } from 'date-fns';
 
-function euclideanDistance(arr1: number[], arr2: number[]) {
-  if (arr1.length !== arr2.length) return Infinity;
-  let sum = 0;
-  for (let i = 0; i < arr1.length; i++) {
-    const diff = arr1[i] - arr2[i];
-    sum += diff * diff;
-  }
-  return Math.sqrt(sum);
-}
-
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { meetingId, token, name, division, deviceId, faceDescriptor } = body;
+    const { meetingId, token, name, division, deviceId } = body;
 
     // 1. Verify Meeting & Token
     const { data: meeting, error: meetingError } = await supabase
@@ -53,46 +43,6 @@ export async function POST(request: Request) {
     // 3. Calculate Attendance Status (Hadir vs Late)
     const now = new Date(); // Server time (UTC usually)
 
-    // AI Facial Validation Module
-    if (faceDescriptor && faceDescriptor.length === 128) {
-      // Find user profile by name
-      const { data: userProfile, error: profileError } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .ilike('name', name.trim())
-        .single();
-      
-      if (!userProfile) {
-        // First time scanning - register their face vector
-        const { error: insertProfileError } = await supabase
-          .from('user_profiles')
-          .insert({
-            name: name.trim(),
-            division: division,
-            face_descriptor: faceDescriptor
-          });
-        
-        if (insertProfileError) {
-          console.error("Failed to register face:", insertProfileError);
-        }
-      } else if (userProfile.face_descriptor) {
-        // Compare new scan with stored face vector
-        const storedDescriptor = userProfile.face_descriptor as number[];
-        const distance = euclideanDistance(faceDescriptor, storedDescriptor);
-        console.log(`Face distance for ${name}: ${distance}`);
-
-        // A threshold of 0.6 is typical for ssdMobilenetv1 / FaceRecognitionNet
-        if (distance > 0.6) {
-           return NextResponse.json({ 
-             error: `SECURITY ALARM: Face mismatch (confidence: ${(1 - distance).toFixed(2)}). You are not ${name}.` 
-           }, { status: 403 });
-        }
-      }
-    } else {
-      // Reject if no face scan provided but system requires it
-      return NextResponse.json({ error: 'Facial scan missing or invalid.' }, { status: 400 });
-    }
-    
     // Construct Meeting Start Date
     // Note: This relies on the server and meeting creator being in sync or using ISO strings.
     // Ideally, store `start_datetime` as TIMESTAMPTZ.
