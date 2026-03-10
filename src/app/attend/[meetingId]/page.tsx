@@ -63,6 +63,25 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
     setStatus(null);
     const form = e.target as HTMLFormElement;
     
+    // Get Location
+    let location = { lat: 0, lng: 0 };
+    try {
+        const pos: GeolocationPosition = await new Promise((resolve, reject) => {
+            if (!navigator.geolocation) reject(new Error('Geolocation is not supported'));
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                timeout: 5000,
+                maximumAge: 0
+            });
+        });
+        location = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    } catch (error) {
+        console.error(error);
+        setError('Location access is required. Please enable GPS.');
+        setLoading(false);
+        return;
+    }
+
     try {
       const res = await fetch('/api/attendance', {
         method: 'POST',
@@ -71,7 +90,9 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
           meetingId: params.meetingId,
           token,
           name: form.memberName.value,
-          division: form.division.value
+          division: form.division.value,
+          latitude: location.lat,
+          longitude: location.lng
         })
       });
       

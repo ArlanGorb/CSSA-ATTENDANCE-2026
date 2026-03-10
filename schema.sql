@@ -8,6 +8,9 @@ CREATE TABLE public.meetings (
     date DATE NOT NULL,
     start_time TEXT NOT NULL, -- Stored as "HH:mm"
     attendance_limit_minutes INTEGER NOT NULL DEFAULT 10,
+    latitude DOUBLE PRECISION, -- Geolocation support
+    longitude DOUBLE PRECISION,
+    radius_meters INTEGER DEFAULT 100, -- Default 100 meters
     qr_token TEXT,
     qr_expiry TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

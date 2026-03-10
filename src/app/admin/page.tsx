@@ -115,6 +115,9 @@ export default function AdminDashboard() {
       date: form.date.value,
       start_time: form.startTime.value,
       attendance_limit_minutes: parseInt(form.limit.value),
+      latitude: parseFloat(form.latitude.value),
+      longitude: parseFloat(form.longitude.value),
+      radius_meters: parseInt(form.radius.value),
       qr_token: crypto.randomUUID(), // Initial token
       qr_expiry: new Date(Date.now() + 60000 * 5).toISOString()
     }]);
@@ -323,6 +326,18 @@ export default function AdminDashboard() {
                     <div>
                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Late Limit (min)</label>
                        <input name="limit" type="number" defaultValue={15} required className="w-full bg-slate-50 border border-slate-200 p-3 rounded-lg focus:ring-2 ring-blue-500 outline-none transition" />
+                    </div>
+                    <div>
+                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Latitude</label>
+                       <input name="latitude" type="number" step="any" defaultValue="-7.9525" required className="w-full bg-slate-50 border border-slate-200 p-3 rounded-lg focus:ring-2 ring-blue-500 outline-none transition" />
+                    </div>
+                    <div>
+                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Longitude</label>
+                       <input name="longitude" type="number" step="any" defaultValue="112.6145" required className="w-full bg-slate-50 border border-slate-200 p-3 rounded-lg focus:ring-2 ring-blue-500 outline-none transition" />
+                    </div>
+                    <div>
+                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Radius (Meters)</label>
+                       <input name="radius" type="number" defaultValue="100" required className="w-full bg-slate-50 border border-slate-200 p-3 rounded-lg focus:ring-2 ring-blue-500 outline-none transition" />
                     </div>
                     <div className="col-span-full flex justify-end gap-3 mt-4 pt-4 border-t border-slate-100">
                       <button type="button" onClick={() => setCreateFormVisible(false)} className="px-6 py-3 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition">Cancel</button>
