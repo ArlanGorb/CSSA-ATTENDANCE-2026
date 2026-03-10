@@ -22,6 +22,7 @@ export default function AdminDashboard() {
   const [createFormVisible, setCreateFormVisible] = useState(false);
   const [showFullScreenQR, setShowFullScreenQR] = useState(false);
   const [showArchived, setShowArchived] = useState(false); // New state for archiving
+  const [latestAttendee, setLatestAttendee] = useState<any>(null); // For Realtime Sci-fi Notification
 
   // Simple Auth Check
   const handleLogin = (e: React.FormEvent) => {
@@ -64,6 +65,11 @@ export default function AdminDashboard() {
           },
           (payload) => {
             setAttendances((prev) => [payload.new, ...prev]);
+            setLatestAttendee(payload.new);
+            // Auto hide notification after 5 seconds
+            setTimeout(() => {
+               setLatestAttendee(null);
+            }, 5000);
           }
         )
         .subscribe();
@@ -588,6 +594,41 @@ export default function AdminDashboard() {
                </div>
             )}
         </div>
+
+        {/* Realtime Sci-Fi Notification Popup */}
+        {latestAttendee && (
+          <div className="fixed top-8 right-8 z-50 animate-[slideInRight_0.5s_ease-out]">
+            <style>{`
+              @keyframes slideInRight {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+              }
+              @keyframes scanGlow {
+                0%, 100% { box-shadow: 0 0 10px rgba(16,185,129,0.3); }
+                50% { box-shadow: 0 0 20px rgba(16,185,129,0.8), inset 0 0 10px rgba(16,185,129,0.2); }
+              }
+            `}</style>
+            <div className="bg-slate-900 border border-green-500/50 p-4 rounded-xl shadow-2xl flex items-center gap-4 animate-[scanGlow_2s_infinite] min-w-[300px]">
+              <div className="w-12 h-12 rounded-full border-2 border-green-400 border-dashed animate-[spin_4s_linear_infinite] flex items-center justify-center relative">
+                <div className="absolute inset-0 bg-green-500/20 rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+              </div>
+              <div>
+                <p className="text-green-400 text-[10px] font-black tracking-widest uppercase mb-0.5 flex items-center gap-1">
+                  <CheckCircle size={10} /> Face Matched
+                </p>
+                <p className="text-white font-bold text-lg leading-tight uppercase truncate max-w-[200px]">{latestAttendee.name}</p>
+                <div className="flex gap-2 items-center mt-1">
+                  <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-medium">{latestAttendee.division}</span>
+                  <span className={`text-[10px] uppercase font-bold tracking-wider ${latestAttendee.status === 'Late' ? 'text-yellow-400' : 'text-green-400'}`}>
+                    {latestAttendee.status}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
       </main>
     </div>
   );

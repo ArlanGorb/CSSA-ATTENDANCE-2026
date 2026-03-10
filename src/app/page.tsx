@@ -31,6 +31,23 @@ export default function Home() {
           </div>
           <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-blue-500/30 rounded-full blur-2xl group-hover:bg-blue-400/40 transition-all"></div>
         </Link>
+
+        {/* Gamification / Leaderboard Link */}
+        <Link
+          href="/leaderboard"
+          className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-yellow-500/10 to-orange-600/10 backdrop-blur-md border border-yellow-500/20 p-8 hover:bg-yellow-500/20 transition-all duration-300 transform hover:scale-105"
+        >
+          <div className="relative z-10">
+            <h2 className={`mb-3 text-2xl font-bold flex items-center gap-2 text-yellow-400`}>
+              Leaderboard
+              <span className="inline-block transition-transform group-hover:translate-x-1">→</span>
+            </h2>
+            <p className={`m-0 text-sm text-yellow-100/80 max-w-[30ch] leading-relaxed`}>
+              Lihat peringkat kedisiplinan dan poin kehadiran tertinggi anggota CSSA.
+            </p>
+          </div>
+          <div className="absolute -top-10 -right-10 w-32 h-32 bg-yellow-500/20 rounded-full blur-2xl group-hover:bg-yellow-400/30 transition-all"></div>
+        </Link>
       </div>
 
       <div className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-8 text-center opacity-60 text-sm font-light">
