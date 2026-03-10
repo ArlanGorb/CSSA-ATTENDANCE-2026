@@ -59,3 +59,18 @@ ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Enable read access for all users" ON public.user_profiles FOR SELECT USING (true);
 CREATE POLICY "Enable insert for all users" ON public.user_profiles FOR INSERT WITH CHECK (true);
 CREATE POLICY "Enable update for all users" ON public.user_profiles FOR UPDATE USING (true);
+
+-- Intrusion Detection Logs
+CREATE TABLE public.security_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    meeting_id UUID REFERENCES public.meetings(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    division TEXT NOT NULL,
+    device_id TEXT,
+    threat_level TEXT DEFAULT 'HIGH',
+    threat_type TEXT NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.security_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable all actions for all users" ON public.security_logs FOR ALL USING (true) WITH CHECK (true);

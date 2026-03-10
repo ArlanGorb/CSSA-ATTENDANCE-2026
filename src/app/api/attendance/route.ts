@@ -103,13 +103,24 @@ export async function POST(request: Request) {
        if (deviceCheck && deviceCheck.length > 0) {
          is_suspicious = true;
          console.warn(`Suspicious: Multiple attendance from same device (${deviceId}) for meeting ${meetingId}`);
+         
+         // Log into security_logs table for Admin Intrusion Dashboard
+         await supabase.from('security_logs').insert([{
+            meeting_id: meetingId,
+            name: name,
+            division: division,
+            device_id: deviceId,
+            threat_level: 'HIGH',
+            threat_type: 'DEVICE_SPOOFING'
+         }]);
+
          // Block multiple submissions from one device
          return NextResponse.json({ error: 'SECURITY BREACH: This device has already submitted attendance.' }, { status: 403 });
        }
     }
 
     // 4. Insert Record
-    const { error: insertError } = await supabase.from('attendance').insert([{
+    const { error: insertError } = await supabase.from('attendance').insert([{  
       meeting_id: meetingId,
       name,
       division,

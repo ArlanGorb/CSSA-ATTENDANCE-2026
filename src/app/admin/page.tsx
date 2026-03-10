@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { supabase } from '@/lib/supabase';
 import { QRCodeSVG } from 'qrcode.react';
-import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, MapPin, Archive, RotateCcw, Terminal } from 'lucide-react';
+import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, MapPin, Archive, RotateCcw, Terminal, ShieldAlert } from 'lucide-react';
 import { format } from 'date-fns';
 
 const DIVISIONS = [
@@ -23,6 +23,10 @@ export default function AdminDashboard() {
   const [showFullScreenQR, setShowFullScreenQR] = useState(false);
   const [showArchived, setShowArchived] = useState(false); // New state for archiving
   const [latestAttendee, setLatestAttendee] = useState<any>(null); // For Realtime Sci-fi Notification
+  
+  // Security specific states
+  const [securityLogs, setSecurityLogs] = useState<any[]>([]);
+  const [showSecurityDashboard, setShowSecurityDashboard] = useState(false);
 
   // Simple Auth Check
   const handleLogin = (e: React.FormEvent) => {
@@ -72,6 +76,20 @@ export default function AdminDashboard() {
             }, 5000);
           }
         )
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'security_logs',
+            filter: `meeting_id=eq.${selectedMeeting.id}`,
+          },
+          (payload) => {
+            setSecurityLogs((prev) => [payload.new, ...prev]);
+            // Flash dashboard red on attack
+            setShowSecurityDashboard(true);
+          }
+        )
         .subscribe();
 
       // Refresh QR every 5 mins (300000ms)
@@ -116,15 +134,22 @@ export default function AdminDashboard() {
       .order('timestamp', { ascending: false });
     
     if (data) setAttendances(data);
+
+    // Fetch security logs for this meeting too
+    const { data: logs } = await supabase
+      .from('security_logs')
+      .select('*')
+      .eq('meeting_id', meetingId)
+      .order('timestamp', { ascending: false });
+    
+    if (logs) setSecurityLogs(logs);
   };
 
   const refreshQRToken = async (meetingId: string) => {
-    // No Refresh for Archived
     if (showArchived) return;
-
+    
     const newToken = crypto.randomUUID();
     const expiry = new Date(Date.now() + 60000 * 5); // Valid for 5 minutes.
-    
     await supabase.from('meetings').update({ 
       qr_token: newToken, 
       qr_expiry: expiry.toISOString() 
@@ -335,18 +360,25 @@ export default function AdminDashboard() {
                           <PlusCircle size={18} />
                        </button>
                    )}
+                   <button
+                      onClick={() => setShowSecurityDashboard(!showSecurityDashboard)}
+                      className={`p-2 transition-colors border text-xs ${showSecurityDashboard ? 'bg-red-500/20 text-red-500 border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'bg-black text-red-900/60 hover:text-red-500 hover:bg-red-950/20 border-red-900/30'}`}
+                      title="Intrusion Logs"
+                    >
+                      <ShieldAlert size={18} className={showSecurityDashboard ? 'animate-pulse' : ''} />
+                   </button>
                </div>
             </div>
-            
+
             <div className="space-y-4 relative z-10 p-2">
-              {meetings.map((meeting) => (
-                <div 
+               {meetings.map((meeting) => (
+                <div
                   key={meeting.id}
-                  className={`group p-4 rounded-none transition-all border relative overflow-hidden flex flex-col crt
-                    ${selectedMeeting?.id === meeting.id 
-                      ? 'bg-green-500/20 text-green-400 shadow-[0_0_15px_rgba(16,185,129,0.3)] border-green-500 translate-x-2' 
+                  className={`group p-4 rounded-none transition-all border relative overflow-hidden flex flex-col crt ${
+                    selectedMeeting?.id === meeting.id
+                      ? 'bg-green-500/20 text-green-400 shadow-[0_0_15px_rgba(16,185,129,0.3)] border-green-500 translate-x-2'
                       : 'bg-black hover:bg-green-950/40 border-green-500/30 hover:border-green-500/80'
-                    }`}
+                  }`}
                 >
                   {selectedMeeting?.id === meeting.id && <div className="absolute top-0 right-0 w-2 h-2 bg-green-500 animate-pulse"></div>}
                   <div className="absolute top-0 right-0 w-8 h-8 pointer-events-none group-hover:bg-green-500/10 -m-4 rotate-45 transition-colors"></div>
@@ -458,7 +490,53 @@ export default function AdminDashboard() {
 
             {selectedMeeting ? (
               <div className="space-y-8 animate-fade-in-up relative z-10">
-                 {/* Full Screen QR Modal */}
+                {showSecurityDashboard ? (
+                  <div className="bg-[#050505] rounded-none shadow-[0_0_30px_rgba(239,68,68,0.1)] border border-red-500/20 overflow-hidden relative min-h-[60vh]">
+                     <div className="px-8 py-6 border-b border-red-500/40 flex justify-between items-center bg-red-950/20">
+                        <div>
+                          <h2 className="text-2xl font-black text-red-500 uppercase tracking-widest flex items-center gap-3">
+                             <ShieldAlert className="animate-pulse" />
+                             Intrusion Detection System
+                          </h2>
+                          <p className="text-[10px] text-red-400 mt-2 font-mono uppercase tracking-widest flex items-center gap-2">
+                             <div className="w-2 h-2 bg-red-500 animate-ping"></div> Realtime Threat Monitoring Active
+                          </p>
+                        </div>
+                     </div>
+                     <div className="p-8">
+                       {securityLogs.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-20 text-green-500/50">
+                             <CheckCircle size={48} className="mb-4 opacity-50" />
+                             <p className="tracking-[0.3em] font-bold text-xs uppercase">System Secure. No threats detected.</p>
+                          </div>
+                       ) : (
+                          <div className="space-y-4">
+                             {securityLogs.map((log) => (
+                                <div key={log.id} className="bg-red-950/10 border-l-4 border-red-500 p-4 flex flex-col md:flex-row justify-between md:items-center gap-4 relative overflow-hidden group hover:bg-red-900/20 transition-colors">
+                                   <div className="absolute inset-0 bg-red-500/5 scan-line pointer-events-none opacity-0 group-hover:opacity-100"></div>
+                                   <div>
+                                      <div className="flex items-center gap-3 mb-2">
+                                         <span className="px-2 py-0.5 bg-red-500 text-black text-[10px] font-black tracking-widest uppercase animate-pulse">{log.threat_level || 'HIGH'}</span>
+                                         <h3 className="text-red-400 font-bold tracking-widest uppercase text-sm">{log.threat_type || 'DEVICE_SPOOFING'}</h3>
+                                      </div>
+                                      <p className="text-red-200/80 text-xs font-mono">
+                                         <span className="text-white font-bold">{log.name}</span> ({log.division}) attempted unauthorized duplicate access.
+                                      </p>
+                                      <p className="text-red-500/60 text-[10px] font-mono mt-1">DEVICE_FINGERPRINT: {log.device_id}</p>
+                                   </div>
+                                   <div className="text-right flex flex-col md:items-end gap-1">
+                                      <span className="text-red-400 font-mono text-xs">{format(new Date(log.timestamp), 'HH:mm:ss')}</span>
+                                      <span className="text-red-500/50 font-mono text-[10px]">{format(new Date(log.timestamp), 'dd MMM yyyy')}</span>
+                                   </div>
+                                </div>
+                             ))}
+                          </div>
+                       )}
+                     </div>
+                  </div>
+                ) : (
+                  <>
+                   {/* Full Screen QR Modal */}
                  {showFullScreenQR && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-fade-in crt">
                        <button onClick={() => setShowFullScreenQR(false)} className="absolute top-6 right-6 p-3 bg-green-500/10 hover:bg-green-500/20 text-green-500 rounded-none border border-green-500/50 transition group">
@@ -631,7 +709,9 @@ export default function AdminDashboard() {
                        })}
                     </div>
                  </div>
-              </div>
+              </>
+              )}
+            </div>
             ) : (
                <div className="h-[80vh] flex flex-col items-center justify-center text-center opacity-60">
                  <div className="bg-green-950/20 border border-green-500/20 p-8 mb-6 animate-pulse crt">
