@@ -152,6 +152,18 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleDelete = async (meetingId: string) => {
+    if (confirm('Are you sure you want to permanently delete this meeting? This action cannot be undone.')) {
+        const { error } = await supabase.from('meetings').delete().eq('id', meetingId);
+        if (error) {
+            alert('Error deleting meeting: ' + error.message);
+        } else {
+            fetchMeetings();
+            if (selectedMeeting?.id === meetingId) setSelectedMeeting(null);
+        }
+    }
+  };
+
   const handleCreateMeeting = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -339,8 +351,19 @@ export default function AdminDashboard() {
                       </div>
                   </div>
                   
-                  {/* Archive Action Button */}
-                  <div className={`mt-3 pt-3 border-t ${selectedMeeting?.id === meeting.id ? 'border-white/20' : 'border-slate-100'} flex justify-end`}>
+                  {/* Action Buttons */}
+                  <div className={`mt-3 pt-3 border-t ${selectedMeeting?.id === meeting.id ? 'border-white/20' : 'border-slate-100'} flex justify-end gap-2`}>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDelete(meeting.id); }}
+                        className={`text-[10px] uppercase font-bold px-2 py-1 rounded flex items-center gap-1 transition-colors
+                           ${selectedMeeting?.id === meeting.id 
+                             ? 'bg-red-500/20 text-red-100 hover:bg-red-500/40' 
+                             : 'bg-red-50 text-red-600 hover:bg-red-100'}`}
+                        title="Delete Permanently"
+                      >
+                         <Trash2 size={10} />
+                         Delete
+                      </button>
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleArchive(meeting.id, !meeting.is_archived); }}
                         className={`text-[10px] uppercase font-bold px-2 py-1 rounded flex items-center gap-1 transition-colors
