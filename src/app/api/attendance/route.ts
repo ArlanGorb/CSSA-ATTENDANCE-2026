@@ -28,15 +28,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'QR Code expired. Refresh and scan again.' }, { status: 400 });
     }
 
-    // 2. Check if user already attended
-    const { data: existing } = await supabase
+    // 2. Check if user already attended (case-insensitive)
+    const { data: existing, error: existingError } = await supabase
       .from('attendance')
       .select('id')
       .eq('meeting_id', meetingId)
-      .eq('name', name)
-      .single();
+      .ilike('name', name.trim())
+      .limit(1);
 
-    if (existing) {
+    if (existing && existing.length > 0) {
       return NextResponse.json({ error: 'You have already submitted attendance.' }, { status: 400 });
     }
 

@@ -128,9 +128,13 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
         setStatus(`Attendance recorded: ${data.status}`);
       } else {
         setError(data.error);
+        setShowCamera(false); // Go back to form or show error clearly
+        setScanning(false);
       }
     } catch (err) {
       setError('An unexpected error occurred. Please try again.');
+      setShowCamera(false);
+      setScanning(false);
     } finally {
       setLoading(false);
     }
