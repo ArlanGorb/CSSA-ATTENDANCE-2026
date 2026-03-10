@@ -272,50 +272,31 @@ export default function AdminDashboard() {
   const [origin, setOrigin] = useState('');
   useEffect(() => setOrigin(window.location.origin), []);
   const attendanceUrl = `${origin}/attend/${selectedMeeting?.id}?token=${qrToken}`;
-
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black overflow-hidden relative font-mono text-green-500">
-        <style>{`
-          @keyframes slideDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
-          .scan-line { height: 2px; width: 100%; background: rgba(16,185,129,0.3); position: absolute; box-shadow: 0 0 10px #10B981; animation: slideDown 3s linear infinite; }
-          .crt::before { content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); z-index: 2; background-size: 100% 2px, 3px 100%; pointer-events: none; }
-        `}</style>
-        <div className="crt absolute inset-0"></div>
-        <div className="scan-line top-0 z-10"></div>
-        
-        <form onSubmit={handleLogin} className="border border-green-500/50 bg-black/60 backdrop-blur-sm p-10 w-full max-w-lg relative z-20 shadow-[0_0_50px_rgba(16,185,129,0.1)]">
-          <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-green-500"></div>
-          <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-green-500"></div>
-          <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-green-500"></div>
-          <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-green-500"></div>
-
-          <p className="text-xs mb-6 uppercase tracking-widest opacity-70">Secured Node // BEM FILKOM</p>
-          <h2 className="text-4xl font-bold mb-2 tracking-tighter">
-            <span className="text-slate-400">&gt;</span> ROOT_ACCESS
-            <span className="animate-pulse">_</span>
-          </h2>
-          <p className="text-[10px] mb-8 uppercase tracking-widest text-green-400">Initialize Authentication Sequence</p>
-          
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans text-slate-900">
+        <form onSubmit={handleLogin} className="bg-white p-10 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] w-full max-w-md border border-slate-100">
+          <div className="text-center mb-8">
+            <div className="mx-auto w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-4">
+              <Lock size={24} />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Admin Dashboard</h2>
+            <p className="text-sm text-slate-500">Sign in to manage attendance</p>
+          </div>
           <div className="space-y-6">
-            <div className="relative group">
+            <div>
+               <label className="block text-sm font-medium text-slate-700 mb-2">Password</label>
                <input
                   type="password"
-                  placeholder="[ ENTER PASSPHRASE ]"
+                  placeholder="Enter password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-green-950/20 border border-green-500/30 text-green-400 p-4 focus:ring-1 focus:ring-green-400 focus:outline-none transition-all placeholder:text-green-800 text-center tracking-[0.5em] font-black"
-                />
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-4 py-3 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+               />
             </div>
-            <button type="submit" className="w-full relative overflow-hidden bg-green-500/10 border border-green-500 text-green-400 hover:bg-green-500 hover:text-black font-bold p-4 transition-all duration-300 uppercase tracking-widest group">
-               <span className="relative z-10 group-hover:block hidden">Accessing...</span>
-               <span className="relative z-10 block group-hover:hidden">Override Override</span>
-               {/* Glitch hover effect could be placed here if desired */}
+            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl transition-all shadow-sm">
+               Sign In
             </button>
-          </div>
-          <div className="mt-8 text-[9px] uppercase tracking-widest flex justify-between text-green-700">
-             <span>SYS.ID: 9811.2</span>
-             <span>CONN: SECURE</span>
           </div>
         </form>
       </div>
@@ -323,164 +304,154 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-black font-mono text-green-500 flex selection:bg-green-500 selection:text-black">    
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex selection:bg-blue-100">
       {/* Sidebar Navigation */}
-      <aside className="w-80 bg-[#050505] border-r border-green-500/20 h-screen sticky top-0 flex flex-col shadow-[4px_0_50px_rgba(16,185,129,0.05)] z-20 hidden lg:flex">
-         <div className="p-8 border-b border-green-500/20 relative">
-            <div className="absolute top-0 right-0 w-8 h-8 border-t border-r border-green-500/50 m-2"></div>
-            <h1 className="text-2xl font-black text-green-400 tracking-tighter flex items-center gap-3 drop-shadow-[0_0_8px_rgba(74,222,128,0.5)]">
-              <div className="w-8 h-8 border-2 border-green-400 flex items-center justify-center text-green-400 text-lg relative bg-green-950/30">
-                 <div className="absolute absolute inset-0 bg-green-400/20 animate-ping"></div>
-                 C
+      <aside className="w-72 bg-white border-r border-slate-200 h-screen sticky top-0 flex flex-col z-20 hidden lg:flex">
+         <div className="p-6 border-b border-slate-100">
+            <h1 className="text-xl font-bold text-slate-800 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white text-sm font-black shadow-sm">
+                C
               </div>
-              CSSA NODE
+              CSSA Hub
             </h1>
-            <p className="text-[10px] text-green-600 mt-3 font-bold tracking-[0.2em] uppercase">SYS.ATTENDANCE_MGT</p>
+            <p className="text-xs text-slate-500 mt-2 font-medium tracking-wide">ATTENDANCE MANAGEMENT</p>
          </div>
-         
-         <div className="p-6 flex-1 overflow-y-auto custom-scrollbar relative z-10">
-            <div className="flex justify-between items-center mb-6">
-               <h3 className="text-[10px] font-bold text-green-700/80 uppercase tracking-widest font-mono">
-                  &gt; {showArchived ? 'ARCHIVED' : 'ACTIVE'}_NODES
+
+         <div className="p-4 flex-1 overflow-y-auto">
+            <div className="flex justify-between items-center px-2 mb-4">
+               <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  {showArchived ? 'Archived' : 'Active'} Sessions
                </h3>
-               <div className="flex gap-2">
-                   <button 
-                      onClick={() => setShowArchived(!showArchived)} 
-                      className={`p-2 transition-colors border text-xs ${showArchived ? 'bg-green-500/20 text-green-400 border-green-500/50' : 'bg-black text-green-700/60 hover:text-green-400 hover:bg-green-950/20 border-green-900/30'}`}
+               <div className="flex gap-1">
+                   <button
+                      onClick={() => setShowArchived(!showArchived)}
+                      className={`p-1.5 rounded-md transition-colors ${showArchived ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}
                       title={showArchived ? "Show Active" : "Show Archived"}
                     >
                       {showArchived ? <RotateCcw size={14} /> : <Archive size={14} />}
                    </button>
                    {!showArchived && (
-                       <button 
-                          onClick={() => setCreateFormVisible(true)} 
-                          className="bg-green-950/20 hover:bg-green-500/20 text-green-400 p-2 border border-green-500/30 transition-colors text-xs drop-shadow-[0_0_5px_rgba(74,222,128,0.5)]"
+                       <button
+                          onClick={() => setCreateFormVisible(true)}
+                          className="p-1.5 rounded-md text-slate-400 hover:bg-slate-50 hover:text-blue-600 transition-colors"
                           title="Initialize New Session"
                         >
-                          <PlusCircle size={18} />
+                          <PlusCircle size={16} />
                        </button>
                    )}
                    <button
                       onClick={() => setShowSecurityDashboard(!showSecurityDashboard)}
-                      className={`p-2 transition-colors border text-xs ${showSecurityDashboard ? 'bg-red-500/20 text-red-500 border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'bg-black text-red-900/60 hover:text-red-500 hover:bg-red-950/20 border-red-900/30'}`}
+                      className={`p-1.5 rounded-md transition-colors ${showSecurityDashboard ? 'bg-red-50 text-red-600' : 'text-slate-400 hover:bg-slate-50 hover:text-red-600'}`}
                       title="Intrusion Logs"
                     >
-                      <ShieldAlert size={18} className={showSecurityDashboard ? 'animate-pulse' : ''} />
+                      <ShieldAlert size={16} />
                    </button>
                </div>
             </div>
 
-            <div className="space-y-4 relative z-10 p-2">
+            <div className="space-y-1">
                {meetings.map((meeting) => (
                 <div
                   key={meeting.id}
-                  className={`group p-4 rounded-none transition-all border relative overflow-hidden flex flex-col crt ${
+                  onClick={() => setSelectedMeeting(meeting)}
+                  className={`group p-3 rounded-xl cursor-pointer transition-all border ${
                     selectedMeeting?.id === meeting.id
-                      ? 'bg-green-500/20 text-green-400 shadow-[0_0_15px_rgba(16,185,129,0.3)] border-green-500 translate-x-2'
-                      : 'bg-black hover:bg-green-950/40 border-green-500/30 hover:border-green-500/80'
+                      ? 'bg-blue-50 border-blue-100 text-blue-900 shadow-sm'
+                      : 'bg-transparent border-transparent hover:bg-slate-50 text-slate-600'
                   }`}
                 >
-                  {selectedMeeting?.id === meeting.id && <div className="absolute top-0 right-0 w-2 h-2 bg-green-500 animate-pulse"></div>}
-                  <div className="absolute top-0 right-0 w-8 h-8 pointer-events-none group-hover:bg-green-500/10 -m-4 rotate-45 transition-colors"></div>
-                  <div className="cursor-pointer" onClick={() => setSelectedMeeting(meeting)}>
-                      <h4 className={`font-mono text-sm tracking-widest uppercase font-bold ${selectedMeeting?.id === meeting.id ? 'text-green-300 drop-shadow-[0_0_5px_rgba(74,222,128,0.8)]' : 'text-green-600'}`}>
-                        {selectedMeeting?.id === meeting.id ? '> ' : ''}{meeting.title}
-                      </h4>
-                      <div className={`text-[10px] mt-2 flex justify-between items-center font-mono ${selectedMeeting?.id === meeting.id ? 'text-green-400/80' : 'text-green-700/60'}`}>
-                        <span className="flex items-center gap-1 uppercase tracking-widest"><Users size={10}/> {meeting.date}</span>
-                        <span className="bg-green-950/50 border border-green-500/30 px-2 py-0.5 tracking-wider">{meeting.start_time}</span>
+                  <div className="flex justify-between items-start">
+                      <div>
+                          <h4 className={`font-medium text-sm ${selectedMeeting?.id === meeting.id ? 'text-blue-700' : 'text-slate-700'}`}>
+                             {meeting.title}
+                          </h4>
+                          <div className="text-xs mt-1.5 flex items-center gap-3 opacity-70">
+                             <span className="flex items-center gap-1"><Clock size={10}/> {meeting.date}</span>
+                          </div>
                       </div>
                   </div>
-                  
+
                   {/* Action Buttons */}
-                  <div className={`mt-3 pt-3 border-t ${selectedMeeting?.id === meeting.id ? 'border-green-500/30' : 'border-green-900/30'} flex justify-end gap-2`}>
-                      <button 
+                  <div className={`mt-3 pt-3 border-t flex justify-end gap-2 ${selectedMeeting?.id === meeting.id ? 'border-blue-200/50' : 'border-slate-200 hidden group-hover:flex'}`}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleArchive(meeting.id, !meeting.is_archived); }}
+                        className="p-1.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                        title={meeting.is_archived ? "Restore Session" : "Archive Session"}
+                      >
+                        {meeting.is_archived ? <RotateCcw size={14} /> : <Archive size={14} />}
+                      </button>
+                      <button
                         onClick={(e) => { e.stopPropagation(); handleDelete(meeting.id); }}
-                        className={`text-[8px] uppercase font-bold px-2 py-1 flex items-center gap-1 transition-colors tracking-widest
-                           ${selectedMeeting?.id === meeting.id 
-                             ? 'bg-red-500/20 text-red-400 hover:bg-red-500/40 border border-red-500/30' 
-                             : 'bg-red-950/20 text-red-700 hover:text-red-500 hover:border-red-500/30 border border-transparent'}`}
+                        className="p-1.5 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                         title="Delete Permanently"
                       >
-                         <Trash2 size={10} />
-                         DEL
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleArchive(meeting.id, !meeting.is_archived); }}
-                        className={`text-[8px] uppercase font-bold px-2 py-1 flex items-center gap-1 transition-colors tracking-widest
-                           ${selectedMeeting?.id === meeting.id 
-                             ? 'bg-green-950/50 text-green-400 hover:bg-green-900/60 border border-green-500/30' 
-                             : 'bg-green-950/10 text-green-700 hover:text-green-500 hover:border-green-500/30 border border-transparent'}`}
-                      >
-                         {meeting.is_archived ? <RotateCcw size={10} /> : <Archive size={10} />}
-                         {meeting.is_archived ? 'RSTR' : 'ARCH'}
+                        <Trash2 size={14} />
                       </button>
                   </div>
                 </div>
               ))}
               {meetings.length === 0 && (
-                <div className="text-center p-8 border border-dashed border-green-500/30 bg-green-950/10">
-                   <p className="text-green-700/60 text-xs font-mono uppercase tracking-widest mb-2">NO_SESSIONS_FOUND</p>
-                   <button onClick={() => setCreateFormVisible(true)} className="text-green-500 text-[10px] font-bold tracking-[0.2em] uppercase hover:text-green-300 transition-colors drop-shadow-[0_0_5px_rgba(16,185,129,0.5)]">[ INIT_NODE ]</button>
+                <div className="p-4 text-center text-sm text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  No sessions found
                 </div>
               )}
             </div>
          </div>
-         
-         <div className="p-6 border-t border-green-500/20 bg-[#050505] relative z-10">
-            <button onClick={() => {localStorage.removeItem('cssa_admin_auth'); setIsAuthenticated(false);}} className="flex items-center justify-center gap-3 text-[10px] font-bold text-red-500 hover:text-black transition-colors w-full p-3 border border-red-500/30 hover:bg-red-500 uppercase tracking-[0.2em]">
-               <Lock size={16} /> Logout
-            </button>
-         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 min-w-0 flex flex-col h-screen overflow-hidden bg-black relative">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,50,0,0.1)_0,black_100%)] pointer-events-none"></div>
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPgo8cmVjdCB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBmaWxsPSJyZ2JhKDIwMCwgMjAwLCAyMDAsIDAuMDYpIi8+Cjwvc3ZnPg==')] opacity-30 pointer-events-none mix-blend-screen"></div>
-
-        <header className="px-8 py-6 bg-black/80 backdrop-blur-md border-b border-green-500/20 flex justify-between items-center sticky top-0 z-10 lg:hidden">
-            <h1 className="font-bold text-green-500 tracking-widest uppercase">CSSA Admin</h1>
-            <button onClick={() => setCreateFormVisible(true)} className="text-green-400 hover:text-green-300 transition-colors"><PlusCircle /></button>
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
+        {/* Header */}
+        <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center shrink-0 z-10 lg:hidden">
+           {/* Mobile header */}
+           <h1 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <div className="w-6 h-6 rounded-md bg-blue-600 flex items-center justify-center text-white text-xs font-black">C</div>
+              CSSA Hub
+           </h1>
+           <button onClick={() => setIsAuthenticated(false)} className="text-sm text-slate-500 hover:text-slate-800">Sign Out</button>
+        </header>
+        <header className="px-8 py-4 flex justify-end items-center shrink-0 z-10 hidden lg:flex border-b border-slate-100 bg-white">
+           <button 
+             onClick={() => setIsAuthenticated(false)}
+             className="text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors bg-slate-50 hover:bg-slate-100 px-4 py-2 rounded-lg"
+           >
+             Sign Out
+           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
-            {/* Create Modal */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 relative">
             {createFormVisible && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-                <div className="bg-[#050505] p-8 rounded-none border border-green-500/40 shadow-[0_0_30px_rgba(16,185,129,0.15)] w-full max-w-2xl transform transition-all scale-100 relative">
-                  <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-green-500"></div>
-                  <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-green-500"></div>
-                  <div className="flex justify-between items-center mb-6 border-b border-green-500/20 pb-4">
-                     <h2 className="text-xl font-bold text-green-400 tracking-[0.2em] uppercase flex items-center gap-3">
-                        <Terminal size={20} /> Initialize Session
-                     </h2>
-                     <button type="button" onClick={() => setCreateFormVisible(false)} className="text-green-600 hover:text-green-400 transition-colors">
-                        <X size={24} />
-                     </button>
-                  </div>
-                  <form onSubmit={handleCreateMeeting} className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
-                    <div className="col-span-full">
-                      <label className="block text-[10px] font-bold text-green-600 uppercase tracking-[0.2em] mb-2">Session Identifier</label>
-                      <input name="meetingTitle" placeholder="WEEKLY_SYNC_01" required className="w-full bg-black border border-green-800 p-3 text-green-400 focus:border-green-400 focus:ring-1 focus:ring-green-400/50 outline-none transition uppercase placeholder:text-green-900/50" />
+              <div className="mb-8 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden animate-fade-in-up">
+                <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                   <h3 className="font-semibold text-slate-800">Launch New Session</h3>
+                   <button onClick={() => setCreateFormVisible(false)} className="text-slate-400 hover:text-slate-600 bg-white shadow-sm border border-slate-200 p-1 rounded-md"><X size={16} /></button>
+                </div>
+                <div className="p-6">
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    await handleCreateMeeting(e);
+                    setCreateFormVisible(false);
+                  }} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="col-span-1 md:col-span-2">
+                       <label className="block text-sm font-medium text-slate-700 mb-2">Session Title</label>
+                       <input name="meetingTitle" placeholder="e.g Weekly Sync 01" required className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
                     </div>
                     <div>
-                       <label className="block text-[10px] font-bold text-green-600 uppercase tracking-[0.2em] mb-2">Timestamp (Date)</label>
-                       <input name="date" type="date" required className="w-full bg-black border border-green-800 p-3 text-green-400 focus:border-green-400 focus:ring-1 focus:ring-green-400/50 outline-none transition relative z-20" style={{colorScheme: 'dark'}} />
+                       <label className="block text-sm font-medium text-slate-700 mb-2">Date</label>
+                       <input name="date" type="date" required className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
                     </div>
                     <div>
-                       <label className="block text-[10px] font-bold text-green-600 uppercase tracking-[0.2em] mb-2">T-Zero (Time)</label>
-                       <input name="startTime" type="time" required className="w-full bg-black border border-green-800 p-3 text-green-400 focus:border-green-400 focus:ring-1 focus:ring-green-400/50 outline-none transition relative z-20" style={{colorScheme: 'dark'}} />
+                       <label className="block text-sm font-medium text-slate-700 mb-2">Start Time</label>
+                       <input name="startTime" type="time" required className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
                     </div>
                     <div>
-                       <label className="block text-[10px] font-bold text-green-600 uppercase tracking-[0.2em] mb-2">Tolerance (Min)</label>
-                       <input name="limit" type="number" defaultValue={15} required className="w-full bg-black border border-green-800 p-3 text-green-400 focus:border-green-400 focus:ring-1 focus:ring-green-400/50 outline-none transition" />
+                       <label className="block text-sm font-medium text-slate-700 mb-2">Tolerance (Minutes)</label>
+                       <input name="limit" type="number" defaultValue={15} required className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
                     </div>
-                    <div className="col-span-full flex justify-end gap-3 mt-4 pt-4 border-t border-green-500/20">
-                      <button type="button" onClick={() => setCreateFormVisible(false)} className="px-6 py-3 text-green-700 font-bold hover:text-green-400 hover:bg-green-950/20 uppercase text-xs tracking-[0.2em] transition">Abort</button>
-                      <button type="submit" disabled={loading} className="bg-green-600/20 border border-green-500 text-green-400 px-8 py-3 hover:bg-green-500 hover:text-black font-bold uppercase text-xs tracking-[0.2em] transition transform active:scale-95 group relative overflow-hidden">
-                        <div className="absolute inset-0 w-0 bg-green-400 transition-all duration-300 ease-out group-hover:w-full -z-10"></div>
-                        {loading ? 'Executing...' : 'Deploy Session'}
+                    <div className="col-span-1 md:col-span-2 flex justify-end gap-3 mt-4 pt-4 border-t border-slate-100">
+                      <button type="button" onClick={() => setCreateFormVisible(false)} className="px-6 py-2.5 text-slate-600 font-medium hover:bg-slate-50 border border-transparent hover:border-slate-200 rounded-xl transition-all">Cancel</button>
+                      <button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 rounded-xl font-medium transition-all shadow-sm flex items-center gap-2">
+                        {loading && <RefreshCcw size={16} className="animate-spin" />} {loading ? 'Creating...' : 'Create Session'}
                       </button>
                     </div>
                   </form>
@@ -489,44 +460,52 @@ export default function AdminDashboard() {
             )}
 
             {selectedMeeting ? (
-              <div className="space-y-8 animate-fade-in-up relative z-10">
+              <div className="space-y-6 md:space-y-8 animate-fade-in-up relative z-10">      
                 {showSecurityDashboard ? (
-                  <div className="bg-[#050505] rounded-none shadow-[0_0_30px_rgba(239,68,68,0.1)] border border-red-500/20 overflow-hidden relative min-h-[60vh]">
-                     <div className="px-8 py-6 border-b border-red-500/40 flex justify-between items-center bg-red-950/20">
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative min-h-[60vh]">
+                     <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-red-50/30">
                         <div>
-                          <h2 className="text-2xl font-black text-red-500 uppercase tracking-widest flex items-center gap-3">
-                             <ShieldAlert className="animate-pulse" />
-                             Intrusion Detection System
+                          <h2 className="text-lg md:text-xl font-bold text-slate-800 flex items-center gap-2 md:gap-3">
+                             <div className="p-2 bg-red-100 rounded-lg text-red-600"><ShieldAlert size={20} /></div>
+                             Security Center
                           </h2>
-                          <p className="text-[10px] text-red-400 mt-2 font-mono uppercase tracking-widest flex items-center gap-2">
-                             <div className="w-2 h-2 bg-red-500 animate-ping"></div> Realtime Threat Monitoring Active
+                          <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-2 font-medium">
+                             <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                             </span>
+                             Active Threat Monitoring
                           </p>
                         </div>
                      </div>
-                     <div className="p-8">
+                     <div className="p-6 md:p-8">
                        {securityLogs.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center py-20 text-green-500/50">
-                             <CheckCircle size={48} className="mb-4 opacity-50" />
-                             <p className="tracking-[0.3em] font-bold text-xs uppercase">System Secure. No threats detected.</p>
+                          <div className="flex flex-col items-center justify-center py-20 text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                             <ShieldAlert size={48} className="mb-4 text-emerald-400 opacity-80" strokeWidth={1.5} />
+                             <p className="font-semibold text-slate-600">System Secure</p>
+                             <p className="text-sm mt-1">No intrusion attempts detected for this session.</p>
                           </div>
                        ) : (
                           <div className="space-y-4">
                              {securityLogs.map((log) => (
-                                <div key={log.id} className="bg-red-950/10 border-l-4 border-red-500 p-4 flex flex-col md:flex-row justify-between md:items-center gap-4 relative overflow-hidden group hover:bg-red-900/20 transition-colors">
-                                   <div className="absolute inset-0 bg-red-500/5 scan-line pointer-events-none opacity-0 group-hover:opacity-100"></div>
+                                <div key={log.id} className="bg-white border border-slate-200 rounded-xl p-4 md:p-5 flex flex-col md:flex-row justify-between md:items-center gap-4 hover:shadow-md transition-shadow relative overflow-hidden group">
+                                   <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-red-400 to-red-600 group-hover:w-1.5 transition-all"></div>
                                    <div>
-                                      <div className="flex items-center gap-3 mb-2">
-                                         <span className="px-2 py-0.5 bg-red-500 text-black text-[10px] font-black tracking-widest uppercase animate-pulse">{log.threat_level || 'HIGH'}</span>
-                                         <h3 className="text-red-400 font-bold tracking-widest uppercase text-sm">{log.threat_type || 'DEVICE_SPOOFING'}</h3>
+                                      <div className="flex items-center gap-3 mb-1.5">
+                                         <span className="px-2 py-0.5 bg-red-50 text-red-700 border border-red-100 text-[10px] font-bold rounded-md uppercase tracking-wider">{log.threat_level || 'HIGH'}</span>
+                                         <h3 className="text-slate-800 font-bold text-sm">{log.threat_type || 'Device Spoofing'}</h3>
                                       </div>
-                                      <p className="text-red-200/80 text-xs font-mono">
-                                         <span className="text-white font-bold">{log.name}</span> ({log.division}) attempted unauthorized duplicate access.
+                                      <p className="text-slate-600 text-sm">
+                                         <span className="font-bold text-slate-900">{log.name}</span> <span className="text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded text-xs">{log.division}</span> attempted unauthorized duplicate access.
                                       </p>
-                                      <p className="text-red-500/60 text-[10px] font-mono mt-1">DEVICE_FINGERPRINT: {log.device_id}</p>
+                                      <div className="mt-2.5 flex items-center gap-2">
+                                        <span className="text-slate-500 text-[11px] uppercase font-semibold">Device Fingerprint:</span>
+                                        <span className="font-mono text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded inline-block border border-slate-200 break-all">{log.device_id}</span>
+                                      </div>
                                    </div>
-                                   <div className="text-right flex flex-col md:items-end gap-1">
-                                      <span className="text-red-400 font-mono text-xs">{format(new Date(log.timestamp), 'HH:mm:ss')}</span>
-                                      <span className="text-red-500/50 font-mono text-[10px]">{format(new Date(log.timestamp), 'dd MMM yyyy')}</span>
+                                   <div className="text-left md:text-right flex flex-col gap-1 border-t md:border-t-0 border-slate-100 pt-3 md:pt-0 mt-2 md:mt-0">
+                                      <span className="text-slate-800 font-bold text-sm">{format(new Date(log.timestamp), 'HH:mm:ss')}</span>
+                                      <span className="text-slate-500 text-xs font-medium">{format(new Date(log.timestamp), 'dd MMM yyyy')}</span>
                                    </div>
                                 </div>
                              ))}
@@ -537,227 +516,205 @@ export default function AdminDashboard() {
                 ) : (
                   <>
                    {/* Full Screen QR Modal */}
-                 {showFullScreenQR && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-fade-in crt">
-                       <button onClick={() => setShowFullScreenQR(false)} className="absolute top-6 right-6 p-3 bg-green-500/10 hover:bg-green-500/20 text-green-500 rounded-none border border-green-500/50 transition group">
-                          <X size={32} className="group-hover:rotate-90 transition-transform" />
-                       </button>
-                       <div className="bg-[#050505] p-12 rounded-none border-2 border-green-500/50 shadow-[0_0_50px_rgba(16,185,129,0.2)] flex flex-col items-center relative animate-zoom-in">
-                          <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-500 -translate-x-2 -translate-y-2"></div>
-                          <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-500 translate-x-2 translate-y-2"></div>
-                          <h2 className="text-4xl font-black text-green-400 mb-2 tracking-[0.2em] text-center uppercase drop-shadow-[0_0_10px_rgba(74,222,128,0.5)]">{selectedMeeting.title}</h2>
-                          <p className="text-green-600/80 mb-10 text-lg font-mono uppercase tracking-widest">&gt;&gt; AWAITING_SCAN_INPUT &lt;&lt;</p>
-                          <div className="p-6 border border-green-500/30 bg-green-950/10 relative group">
-                             <div className="absolute inset-0 bg-green-500/5 scan-line pointer-events-none"></div>
-                             <div className="bg-white p-4">
-                               <QRCodeSVG value={attendanceUrl} size={500} level="H" />
+                   {showFullScreenQR && (
+                      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 animate-fade-in">
+                         <div className="bg-white p-8 md:p-12 rounded-3xl shadow-2xl flex flex-col items-center relative animate-zoom-in max-w-2xl w-full border border-slate-200">
+                            <button onClick={() => setShowFullScreenQR(false)} className="absolute top-4 right-4 md:top-6 md:right-6 p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full transition-colors">
+                              <X size={20} />
+                            </button>
+                            <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-8 text-center">{selectedMeeting.title}</h2>
+                            <div className="p-6 bg-white rounded-2xl shadow-sm border-2 border-slate-100">
+                               <QRCodeSVG value={attendanceUrl} size={Math.min(300, 300)} level="H" />
+                            </div>
+                            <div className="mt-8 flex items-center gap-2 px-5 py-2.5 bg-blue-50 border border-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                                <RefreshCcw size={16} className="animate-spin-slow" /> Auto-refreshing Token
+                            </div>
+                         </div>
+                      </div>
+                   )}
+
+                   <div className="flex flex-col xl:flex-row gap-6 items-stretch">
+                      {/* QR Card */}
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center flex-shrink-0 w-full xl:w-80">
+                          <div className="bg-slate-50/50 p-5 rounded-2xl mb-6 w-full flex justify-center border-2 border-dashed border-slate-200 cursor-pointer group relative overflow-hidden transition-colors hover:bg-slate-50 hover:border-slate-300" onClick={() => setShowFullScreenQR(true)}>
+                             <div className="bg-white p-3 rounded-xl shadow-sm transition-transform group-hover:scale-105 duration-300 border border-slate-100">
+                                <QRCodeSVG value={attendanceUrl} size={150} level="M" />
+                             </div>
+                             <div className="absolute inset-0 bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
+                                <span className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 shadow-lg scale-90 group-hover:scale-100 transition-transform">
+                                   <Maximize2 size={16} /> Expand
+                                </span>
                              </div>
                           </div>
-                          <div className="mt-10 flex items-center gap-3 px-6 py-3 border border-green-500/20 text-green-400 font-mono text-sm bg-green-950/20">
-                             <div className="w-2 h-2 bg-green-500 animate-ping"></div>
-                             DYNAMIC_QR_TOKEN_ENABLED : AUTO_REFRESH=300s
-                          </div>
-                       </div>
-                    </div>
-                 )}
-
-                 <div className="flex flex-col md:flex-row gap-6 items-start">
-                    {/* QR Card */}
-                    <div className="bg-[#050505] p-6 rounded-none shadow-[0_0_20px_rgba(16,185,129,0.05)] border border-green-500/20 flex flex-col items-center flex-shrink-0 w-full md:w-auto min-w-[300px] relative">
-                        <div className="absolute top-0 right-0 w-2 h-2 bg-green-500 m-2 animate-pulse"></div>
-                        <div className="bg-green-950/10 p-4 rounded-none mb-4 w-full flex justify-center border border-green-500/20 relative group cursor-pointer overflow-hidden" onClick={() => setShowFullScreenQR(true)}>
-                           <div className="absolute inset-0 bg-green-500/5 scan-line pointer-events-none"></div>
-                           <div className="bg-white p-2 transition-transform group-hover:scale-105 duration-300">
-                             <QRCodeSVG value={attendanceUrl} size={220} level="M" />
-                           </div>
-                           <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px]">
-                              <Maximize2 size={32} className="text-green-400 drop-shadow-[0_0_8px_rgba(74,222,128,0.8)] transform scale-50 group-hover:scale-100 transition-transform duration-300" />
-                           </div>
-                        </div>
-                        <div className="w-full">
-                           <h3 className="text-lg font-bold text-green-500 tracking-[0.2em] text-center mb-1 uppercase">Scan Protocol</h3>
-                           <p className="text-[10px] text-center text-green-700 mb-4 tracking-widest uppercase">Auto-refresh: 300s</p>
-                           <div className="grid grid-cols-2 gap-2">
-                             <a 
-                                href={attendanceUrl} 
-                                target="_blank" 
-                                rel="noreferrer" 
-                                className="flex items-center justify-center gap-2 bg-green-950/30 hover:bg-green-600 hover:text-black border border-green-500/30 text-green-400 px-4 py-2.5 transition font-bold text-[10px] tracking-wider uppercase"
-                              >
-                                <QrCode size={14} /> Link
-                              </a>
-                              <button 
-                                onClick={() => refreshQRToken(selectedMeeting.id)}
-                                className="flex items-center justify-center gap-2 bg-green-950/30 hover:bg-green-600 hover:text-black border border-green-500/30 text-green-400 px-4 py-2.5 transition font-bold text-[10px] tracking-wider uppercase"
-                              >
-                                <RefreshCcw size={14} /> Sync
-                              </button>
-                           </div>
-                        </div>
-                    </div>
-
-                    {/* Stats Grid */}
-                    <div className="flex-1 w-full grid grid-cols-2 lg:grid-cols-4 gap-4">
-                        {[
-                          { label: 'Hadir', value: stats.hadir, color: 'text-green-400', bg: 'bg-green-950/20', border: 'border-green-500/30' },
-                          { label: 'Late', value: stats.late, color: 'text-yellow-400', bg: 'bg-yellow-950/20', border: 'border-yellow-500/30' },
-                          { label: 'Excused', value: stats.izin + stats.sakit, color: 'text-blue-400', bg: 'bg-blue-950/20', border: 'border-blue-500/30' },
-                          { label: 'Total', value: stats.total, color: 'text-white/80', bg: 'bg-white/5', border: 'border-white/10' },
-                        ].map((stat, idx) => (
-                           <div key={idx} className={`${stat.bg} ${stat.border} border p-6 rounded-none flex flex-col justify-between items-start shadow-[0_0_15px_rgba(0,0,0,0.5)] transition-transform hover:-translate-y-1 relative overflow-hidden group`}>
-                              <div className={`absolute top-0 right-0 w-8 h-8 ${stat.bg} ${stat.border} border-b border-l transform translate-x-4 -translate-y-4 rotate-45 group-hover:bg-current transition-colors opacity-20`}></div>
-                              <span className={`text-4xl font-black ${stat.color} tracking-tighter drop-shadow-[0_0_8px_currentColor]`}>{stat.value}</span>
-                              <span className={`text-[10px] font-bold uppercase tracking-[0.2em] opacity-80 ${stat.color} mt-2`}>{stat.label}</span>
-                           </div>
-                        ))}
-                    </div>
-                 </div>
-
-                 {/* Main Table */}
-                 <div className="bg-[#050505] rounded-none shadow-[0_0_30px_rgba(16,185,129,0.05)] border border-green-500/20 overflow-hidden relative">
-                    <div className="px-8 py-6 border-b border-green-500/20 flex justify-between items-end bg-green-950/10">
-                       <div>
-                          <h2 className="text-xl font-bold text-green-400 uppercase tracking-widest flex items-center gap-3">
-                             <div className="w-2 h-2 bg-green-500 animate-pulse"></div>
-                             {selectedMeeting.title}
-                          </h2>
-                          <div className="flex items-center gap-4 text-[10px] text-green-600 mt-2 font-mono uppercase tracking-widest">
-                             <span className="flex items-center gap-1"><Clock size={12}/> {format(new Date(selectedMeeting.created_at), 'dd MMM yyyy')}</span>
-                             <span className="px-2 py-0.5 bg-green-950/40 border border-green-500/20 text-green-500">TOLERANCE: {selectedMeeting.attendance_limit_minutes}m</span>
-                          </div>
-                       </div>
-                       <button onClick={handleExportCSV} className="flex items-center gap-2 bg-green-600/20 border border-green-500 hover:bg-green-500 text-green-400 hover:text-black px-5 py-2.5 text-xs tracking-widest font-bold transition transform active:scale-95 uppercase">
-                          <Download size={14} /> EXPORT_DAT
-                       </button>
-                    </div>
-
-                    <div className="p-8 space-y-8 bg-black/50">
-                       {DIVISIONS.map(division => {
-                          const divisionAttendees = attendances.filter(a => a.division === division);
-                          return (
-                             <div key={division} className="bg-black/40 border border-green-500/10 overflow-hidden hover:border-green-500/30 transition-colors duration-300 relative group">
-                                <div className="px-6 py-3 bg-green-950/20 border-b border-green-500/10 flex justify-between items-center relative overflow-hidden">
-                                   <div className="absolute inset-0 bg-green-500/5 scan-line pointer-events-none opacity-0 group-hover:opacity-100"></div>
-                                   <div className="flex items-center gap-3 relative z-10">
-                                      <div className={`w-2 h-2 ${divisionAttendees.length > 0 ? 'bg-green-500 shadow-[0_0_5px_#22c55e]' : 'bg-green-900'}`}></div>
-                                      <h3 className="font-bold text-green-400 text-xs tracking-widest uppercase">{division}</h3>
-                                   </div>
-                                   <span className={`text-[10px] font-bold px-2 py-0.5 border ${divisionAttendees.length > 0 ? 'bg-green-900/40 border-green-500/50 text-green-400' : 'bg-green-950/10 border-green-900/50 text-green-800'} relative z-10 tracking-widest`}>
-                                      {divisionAttendees.length}
-                                   </span>
-                                </div>
-                                {divisionAttendees.length > 0 ? (
-                                   <table className="w-full text-xs font-mono">
-                                      <thead className="bg-[#0a0a0a] text-green-700/80 tracking-widest uppercase border-b border-green-500/10">
-                                         <tr>
-                                            <th className="px-6 py-4 font-normal text-left w-16">IDX</th>
-                                            <th className="px-6 py-4 font-normal text-left">TIMESTAMP</th>
-                                            <th className="px-6 py-4 font-normal text-left">OPERATIVE</th>
-                                            <th className="px-6 py-4 font-normal text-center">STATE</th>
-                                            <th className="px-6 py-4 font-normal text-right">OVERRIDE</th>
-                                         </tr>
-                                      </thead>
-                                      <tbody className="divide-y divide-green-500/5">
-                                         {divisionAttendees.map((record, index) => (
-                                            <tr key={record.id} className="hover:bg-green-500/5 transition-colors group">
-                                               <td className="px-6 py-3 text-green-700/50">{(index + 1).toString().padStart(3, '0')}</td>
-                                               <td className="px-6 py-3 text-green-600/80 flex items-center gap-2">
-                                                  {format(new Date(record.timestamp), 'HH:mm')}
-                                                  <span className="text-[10px] text-green-800">:{format(new Date(record.timestamp), 'ss')}</span>
-                                               </td>
-                                               <td className="px-6 py-3 font-bold text-green-400 group-hover:text-green-300 uppercase tracking-wider">{record.name}</td>
-                                               <td className="px-6 py-3 text-center">
-                                                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-[10px] uppercase font-bold tracking-widest border ${getStatusColor(record.status)}`}>
-                                                     {record.status === 'Hadir' && <CheckCircle size={10} />}
-                                                     {record.status === 'Late' && <div className="w-2 h-2 bg-yellow-500 animate-pulse"></div>}
-                                                     {record.status}
-                                                  </span>
-                                               </td>
-                                               <td className="px-6 py-3 text-right">
-                                                  <div className="flex items-center justify-end gap-2">
-                                                    <select 
-                                                      value={record.status}
-                                                      onChange={(e) => updateStatus(record.id, e.target.value)}
-                                                      className="text-[10px] uppercase tracking-widest bg-black border border-green-500/20 py-1 px-2 text-green-400 focus:border-green-400 outline-none cursor-pointer hover:border-green-500/50 transition-colors"
-                                                    >
-                                                      <option value="Hadir" className="bg-black text-green-400">Hadir</option>
-                                                      <option value="Late" className="bg-black text-yellow-400">Late</option>
-                                                      <option value="Izin" className="bg-black text-blue-400">Izin</option>
-                                                      <option value="Sakit" className="bg-black text-purple-400">Sakit</option>
-                                                      <option value="Alfa" className="bg-black text-red-500">Alfa</option>
-                                                    </select>
-                                                    <button 
-                                                      onClick={() => deleteAttendance(record.id, record.name)}
-                                                      className="p-1.5 text-green-600 hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                                                      title="TERMINATE_RECORD"
-                                                    >
-                                                      <Trash2 size={14} />
-                                                    </button>
-                                                  </div>
-                                               </td>
-                                            </tr>
-                                         ))}
-                                      </tbody>
-                                   </table>
-                                ) : (
-                                   <div className="p-4 text-center text-green-700/50 text-[10px] tracking-widest uppercase bg-black/40 border-t border-green-500/5 crt">
-                                      NO_DATA_LINK_DETECTED_FOR_{division.toUpperCase()}
-                                   </div>
-                                )}
+                          <div className="w-full">
+                             <div className="grid grid-cols-2 gap-3">
+                               <a
+                                  href={attendanceUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl transition-all font-medium text-sm shadow-sm"
+                                >
+                                  <QrCode size={16} className="text-slate-400" /> Open
+                                </a>
+                                <button
+                                  onClick={() => refreshQRToken(selectedMeeting.id)}
+                                  className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl transition-all font-medium text-sm shadow-sm"
+                                >
+                                  <RefreshCcw size={16} className="text-slate-400" /> Sync
+                                </button>
                              </div>
-                          );
-                       })}
-                    </div>
-                 </div>
-              </>
-              )}
-            </div>
+                          </div>
+                      </div>
+
+                      {/* Stats Grid */}
+                      <div className="flex-1 w-full grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5">
+                          {[
+                            { label: 'Present', val: stats.hadir, color: 'emerald', icon: CheckCircle },
+                            { label: 'Late', val: stats.late, color: 'amber', icon: Clock },
+                            { label: 'Excused', val: stats.izin + stats.sakit, color: 'blue', icon: ShieldAlert },
+                            { label: 'Total', val: stats.total, color: 'slate', icon: Terminal },
+                          ].map((stat, idx) => (
+                             <div key={idx} className={`bg-white border border-slate-200 p-5 rounded-2xl flex flex-col shadow-sm relative overflow-hidden`}>
+                                 <div className={`absolute right-0 top-0 p-4 opacity-[0.03] text-${stat.color}-600`}>
+                                    <stat.icon size={64} />
+                                 </div>
+                                 <div className="flex items-center gap-3 mb-2 opacity-80">
+                                    <div className={`w-2 h-2 rounded-full bg-${stat.color}-500`}></div>
+                                    <span className="text-sm font-semibold text-slate-600 uppercase tracking-wider">{stat.label}</span>
+                                 </div>
+                                 <span className={`text-4xl font-black text-slate-800 tracking-tight mt-auto`}>{stat.val}</span>
+                             </div>
+                          ))}
+                      </div>
+                   </div>
+
+                   {/* Main Table */}
+                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                      <div className="px-5 md:px-6 py-4 md:py-5 border-b border-slate-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-slate-50/50">
+                         <div>
+                            <h2 className="text-lg font-bold text-slate-800">
+                               {selectedMeeting.title}
+                            </h2>
+                            <div className="flex flex-wrap items-center gap-2 md:gap-3 text-xs md:text-sm text-slate-500 mt-1.5 font-medium">
+                               <span className="flex items-center gap-1.5 bg-white border border-slate-200 px-2 py-1 rounded-md shadow-sm"><Clock size={14} className="text-slate-400" /> {format(new Date(selectedMeeting.created_at), 'dd MMM yyyy')}</span>
+                               <span className="px-2 py-1 bg-white border border-slate-200 rounded-md shadow-sm text-slate-600">Tolerance: {selectedMeeting.attendance_limit_minutes}m</span>
+                            </div>
+                         </div>
+                         <button onClick={handleExportCSV} className="flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
+                            <Download size={16} /> Export CSV
+                         </button>
+                      </div>
+
+                      <div className="p-4 md:p-6 space-y-6">
+                         {DIVISIONS.map(division => {
+                            const divisionAttendees = attendances.filter(a => a.division === division);
+                            if (divisionAttendees.length === 0) return null;
+                            
+                            return (
+                               <div key={division} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                                     <h3 className="font-bold text-slate-700 text-sm">{division}</h3>
+                                     <span className="text-xs font-bold px-2 py-0.5 bg-white border border-slate-200 text-slate-600 rounded-md shadow-sm">
+                                        {divisionAttendees.length}
+                                     </span>
+                                  </div>
+                                  <div className="overflow-x-auto">
+                                     <table className="w-full text-sm">
+                                        <thead className="bg-white text-slate-400 border-b border-slate-100 text-xs uppercase tracking-wider font-semibold">
+                                           <tr>
+                                              <th className="px-4 py-3 text-left w-12">No</th>
+                                              <th className="px-4 py-3 text-left w-24">Time</th>
+                                              <th className="px-4 py-3 text-left">Name</th>
+                                              <th className="px-4 py-3 text-center w-28">Status</th>
+                                              <th className="px-4 py-3 text-right w-28">Actions</th>
+                                           </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                           {divisionAttendees.map((record, idx) => (
+                                              <tr key={record.id} className="hover:bg-slate-50 transition-colors group">
+                                                 <td className="px-4 py-3 text-slate-400 font-medium">{idx + 1}</td>
+                                                 <td className="px-4 py-3 text-slate-500 font-mono text-xs">
+                                                    {format(new Date(record.timestamp), 'HH:mm')}
+                                                 </td>
+                                                 <td className="px-4 py-3 font-semibold text-slate-800">{record.name}</td>
+                                                 <td className="px-4 py-3 text-center">
+                                                    <span className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider rounded-md border w-full ${
+                                                        record.status === 'Hadir' ? 'bg-emerald-50 text-emerald-700 border-emerald-200/50' :
+                                                        record.status === 'Late' ? 'bg-amber-50 text-amber-700 border-amber-200/50' :
+                                                        record.status === 'Izin' ? 'bg-blue-50 text-blue-700 border-blue-200/50' :
+                                                        record.status === 'Sakit' ? 'bg-purple-50 text-purple-700 border-purple-200/50' :
+                                                        'bg-red-50 text-red-700 border-red-200/50'
+                                                    }`}>
+                                                       {record.status}
+                                                    </span>
+                                                 </td>
+                                                 <td className="px-4 py-3 text-right">
+                                                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                      <select
+                                                        value={record.status}
+                                                        onChange={(e) => updateStatus(record.id, e.target.value)}
+                                                        className="text-xs bg-white border border-slate-200 rounded-md py-1 px-1.5 text-slate-600 focus:border-blue-500 hover:border-slate-300 outline-none cursor-pointer transition-colors shadow-sm font-medium"
+                                                      >
+                                                        <option value="Hadir">Hadir</option>
+                                                        <option value="Late">Late</option>
+                                                        <option value="Izin">Izin</option>
+                                                        <option value="Sakit">Sakit</option>
+                                                        <option value="Alfa">Alfa</option>
+                                                      </select>
+                                                      <button
+                                                        onClick={() => deleteAttendance(record.id, record.name)}
+                                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                                                        title="Delete Record"
+                                                      >
+                                                        <Trash2 size={14} />
+                                                      </button>
+                                                    </div>
+                                                 </td>
+                                              </tr>
+                                           ))}
+                                        </tbody>
+                                     </table>
+                                  </div>
+                               </div>
+                            );
+                         })}
+                      </div>
+                   </div>
+                  </>
+                )}
+              </div>
             ) : (
-               <div className="h-[80vh] flex flex-col items-center justify-center text-center opacity-60">
-                 <div className="bg-green-950/20 border border-green-500/20 p-8 mb-6 animate-pulse crt">
-                    <Terminal size={48} className="text-green-500" />
+               <div className="h-[70vh] flex flex-col items-center justify-center text-center px-4 animate-fade-in-up">
+                 <div className="w-20 h-20 bg-white border border-slate-200 shadow-sm text-slate-300 rounded-3xl flex items-center justify-center mb-6 transform -rotate-6">
+                    <Terminal size={40} />
                  </div>
-                 <h2 className="text-xl font-bold text-green-500 uppercase tracking-[0.2em]">Awaiting Input</h2>
-                 <p className="text-green-700/80 mt-2 max-w-xs text-xs tracking-widest font-mono uppercase">Select a session from the node list to monitor datastream.</p>
+                 <h2 className="text-2xl font-bold text-slate-800">Select a Session</h2>
+                 <p className="text-slate-500 mt-2 max-w-sm text-sm leading-relaxed">Choose an active session from the sidebar to view attendance metrics or initialize a new monitoring session.</p>
                </div>
             )}
         </div>
 
-        {/* Realtime Sci-Fi Notification Popup */}
+        {/* Realtime Notification Popup */}
         {latestAttendee && (
-          <div className="fixed top-8 right-8 z-50 animate-[slideInRight_0.5s_ease-out]">
-            <style>{`
-              @keyframes slideInRight {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-              }
-              @keyframes scanGlow {
-                0%, 100% { box-shadow: 0 0 10px rgba(16,185,129,0.3); }
-                50% { box-shadow: 0 0 20px rgba(16,185,129,0.8), inset 0 0 10px rgba(16,185,129,0.2); }
-              }
-            `}</style>
-            <div className="bg-[#050505] border border-green-500 p-4 rounded-none shadow-[0_0_30px_rgba(16,185,129,0.2)] flex items-center gap-4 animate-[scanGlow_2s_infinite] min-w-[300px] relative">
-              <div className="absolute top-0 right-0 w-2 h-2 bg-green-400"></div>
-              <div className="w-12 h-12 rounded-none border-2 border-green-400 border-dashed animate-[spin_4s_linear_infinite] flex items-center justify-center relative">
-                <div className="absolute inset-0 bg-green-500/20 animate-pulse"></div>
-                <div className="w-2 h-2 bg-green-400"></div>
+          <div className="fixed bottom-8 right-8 z-50 transition-all duration-300 transform translate-x-0 opacity-100">
+            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-xl flex items-center gap-4 min-w-[300px]">
+              <div className="w-10 h-10 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
+                <CheckCircle size={20} />
               </div>
-              <div>
-                <p className="text-green-400 text-[10px] font-black tracking-widest uppercase mb-0.5 flex items-center gap-1">
-                  <CheckCircle size={10} /> DATA_LINK_ESTABLISHED
-                </p>
-                <p className="text-green-100 font-bold text-lg leading-tight uppercase truncate max-w-[200px] font-mono">{latestAttendee.name}</p>
-                <div className="flex gap-2 items-center mt-1">
-                  <span className="text-[10px] bg-green-950/50 border border-green-500/30 text-green-400 px-2 py-0.5 tracking-widest uppercase">{latestAttendee.division}</span>
-                  <span className={`text-[10px] uppercase font-bold tracking-wider ${latestAttendee.status === 'Late' ? 'text-yellow-400 drop-shadow-[0_0_5px_rgba(250,204,21,0.8)]' : 'text-green-400 drop-shadow-[0_0_5px_rgba(74,222,128,0.8)]'}`}>
-                    [{latestAttendee.status}]
-                  </span>
+              <div className="flex-1">
+                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-0.5">New Check-in</p>
+                <div className="font-bold text-slate-800 text-sm">{latestAttendee.name}</div>
+                <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
+                   <span className="font-medium px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">{latestAttendee.division}</span>
+                   <span className="text-slate-300">•</span>
+                   <span className={latestAttendee.status === 'Hadir' ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
+                     {latestAttendee.status}
+                   </span>
                 </div>
               </div>
             </div>
           </div>
         )}
-
       </main>
     </div>
   );
