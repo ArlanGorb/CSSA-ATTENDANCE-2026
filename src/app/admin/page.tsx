@@ -1,9 +1,12 @@
 'use client';
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { supabase } from '@/lib/supabase';
 import { QRCodeSVG } from 'qrcode.react';
 import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
+
+const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false, loading: () => <p>Loading Map...</p> });
 
 const DIVISIONS = [
   "Officer", "Kerohanian", "Mulmed", "Senat Angkatan", 
@@ -371,14 +374,23 @@ export default function AdminDashboard() {
                             />
                        </div>
                     </div>
-                    <div className="col-span-full">
-                       <button 
-                         type="button" 
-                         onClick={handleGetCurrentLocation}
-                         className="flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-2 rounded-lg transition-colors border border-blue-200 w-fit"
-                       >
-                         <MapPin size={14} /> Use Current Location
-                       </button>
+                    <div className="col-span-full space-y-3">
+                       <div className="flex gap-2">
+                           <button 
+                             type="button" 
+                             onClick={handleGetCurrentLocation}
+                             className="flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-2 rounded-lg transition-colors border border-blue-200 w-fit"
+                           >
+                             <MapPin size={14} /> My Location
+                           </button>
+                           <span className="text-xs text-slate-400 py-2">Click map to adjust pin</span>
+                       </div>
+                       
+                       <MapPicker 
+                          lat={newMeetingLoc.lat} 
+                          lng={newMeetingLoc.lng} 
+                          onChange={(pos) => setNewMeetingLoc(pos)} 
+                       />
                     </div>
                     <div>
                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Radius (Meters)</label>
