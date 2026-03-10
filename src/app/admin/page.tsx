@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { QRCodeSVG } from 'qrcode.react';
-import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2 } from 'lucide-react';
+import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
 
 const DIVISIONS = [
@@ -20,6 +20,22 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [createFormVisible, setCreateFormVisible] = useState(false);
   const [showFullScreenQR, setShowFullScreenQR] = useState(false);
+  const [newMeetingLoc, setNewMeetingLoc] = useState({ lat: -7.9525, lng: 112.6145 });
+
+  const handleGetCurrentLocation = () => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(function(position) {
+        setNewMeetingLoc({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+      }, function(error) {
+         alert("Error getting location: " + error.message);
+      });
+    } else {
+      alert("Geolocation is not available");
+    }
+  };
 
   // Simple Auth Check
   const handleLogin = (e: React.FormEvent) => {
@@ -329,11 +345,40 @@ export default function AdminDashboard() {
                     </div>
                     <div>
                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Latitude</label>
-                       <input name="latitude" type="number" step="any" defaultValue="-7.9525" required className="w-full bg-slate-50 border border-slate-200 p-3 rounded-lg focus:ring-2 ring-blue-500 outline-none transition" />
+                       <div className="relative">
+                           <input 
+                              name="latitude" 
+                              type="number" 
+                              step="any" 
+                              value={newMeetingLoc.lat}
+                              onChange={(e) => setNewMeetingLoc({...newMeetingLoc, lat: parseFloat(e.target.value)})} 
+                              required 
+                              className="w-full bg-slate-50 border border-slate-200 p-3 rounded-lg focus:ring-2 ring-blue-500 outline-none transition" 
+                            />
+                       </div>
                     </div>
                     <div>
                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Longitude</label>
-                       <input name="longitude" type="number" step="any" defaultValue="112.6145" required className="w-full bg-slate-50 border border-slate-200 p-3 rounded-lg focus:ring-2 ring-blue-500 outline-none transition" />
+                       <div className="relative">
+                           <input 
+                              name="longitude" 
+                              type="number" 
+                              step="any" 
+                              value={newMeetingLoc.lng}
+                              onChange={(e) => setNewMeetingLoc({...newMeetingLoc, lng: parseFloat(e.target.value)})} 
+                              required 
+                              className="w-full bg-slate-50 border border-slate-200 p-3 rounded-lg focus:ring-2 ring-blue-500 outline-none transition" 
+                            />
+                       </div>
+                    </div>
+                    <div className="col-span-full">
+                       <button 
+                         type="button" 
+                         onClick={handleGetCurrentLocation}
+                         className="flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-2 rounded-lg transition-colors border border-blue-200 w-fit"
+                       >
+                         <MapPin size={14} /> Use Current Location
+                       </button>
                     </div>
                     <div>
                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Radius (Meters)</label>
