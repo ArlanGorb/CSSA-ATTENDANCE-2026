@@ -18,18 +18,18 @@ const FACE_CONFIRM_FRAMES = 10; // More frames for stability (approx 3 seconds)
 const FACE_MIN_SIZE_RATIO = 0.12; // Face must be larger/closer (at least 12% of screen)
 const FACE_MATCH_THRESHOLD = 0.45; // Stricter = Higher Accuracy
 
-// Liveness Detection (Blink)
-const EAR_THRESHOLD = 0.22; // Eye Aspect Ratio below this = eye closed
-const REQUIRED_BLINKS = 2; // Blinks needed for liveness
+// Liveness Detection (Mouth Open)
+const MAR_THRESHOLD = 0.5; // Mouth Aspect Ratio above this = mouth open
 
-// Eye Aspect Ratio calculation from 6 eye landmarks
-function computeEAR(eye: faceapi.Point[]): number {
+// Mouth Aspect Ratio calculation from inner mouth landmarks (60-67)
+function computeMAR(mouth: faceapi.Point[]): number {
   const dist = (a: faceapi.Point, b: faceapi.Point) =>
     Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
-  const v1 = dist(eye[1], eye[5]);
-  const v2 = dist(eye[2], eye[4]);
-  const h = dist(eye[0], eye[3]);
-  return h > 0 ? (v1 + v2) / (2 * h) : 0;
+  // mouth[2] is top inner lip, mouth[6] is bottom inner lip
+  // mouth[0] is left corner, mouth[4] is right corner
+  const v = dist(mouth[2], mouth[6]);
+  const h = dist(mouth[0], mouth[4]);
+  return h > 0 ? v / h : 0;
 }
 
 // Capture snapshot from video
@@ -87,11 +87,8 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   const [matchAttempted, setMatchAttempted] = useState(false);
   const labeledDescriptors = useRef<faceapi.LabeledFaceDescriptors[]>([]);
 
-  // Liveness (Blink Detection) States
-  const [blinkCount, setBlinkCount] = useState(0);
+  // Liveness (Mouth Open) States
   const [livenessVerified, setLivenessVerified] = useState(false);
-  const eyeClosedRef = useRef(false);
-  const blinkCountRef = useRef(0);
 
   // Load face-api.js models on mount
   useEffect(() => {
@@ -169,13 +166,11 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
 
     faceConfirmCount.current = 0;
     noFaceCount.current = 0;
-    eyeClosedRef.current = false;
-    blinkCountRef.current = 0;
+
     setFaceDetected(false);
     setFaceBox(null);
     setMatchedProfile(null);
     setMatchAttempted(false);
-    setBlinkCount(0);
     setLivenessVerified(false);
     setDetectionStatus('Scanning for face...');
 
@@ -218,21 +213,13 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
             };
             setFaceBox(currentFaceBox);
 
-            // Blink detection
+            // Mouth Open detection
             const landmarks = fullDetection.landmarks.positions;
-            const leftEye = landmarks.slice(36, 42);
-            const rightEye = landmarks.slice(42, 48);
-            const avgEAR = (computeEAR(leftEye) + computeEAR(rightEye)) / 2;
+            const mouthInner = landmarks.slice(60, 68);
+            const MAR = computeMAR(mouthInner);
 
-            if (avgEAR < EAR_THRESHOLD) {
-              if (!eyeClosedRef.current) eyeClosedRef.current = true;
-            } else {
-              if (eyeClosedRef.current) {
-                eyeClosedRef.current = false;
-                blinkCountRef.current++;
-                setBlinkCount(blinkCountRef.current);
-                if (blinkCountRef.current >= REQUIRED_BLINKS) setLivenessVerified(true);
-              }
+            if (MAR > MAR_THRESHOLD) {
+              setLivenessVerified(true);
             }
 
             if (faceConfirmCount.current >= FACE_CONFIRM_FRAMES) {
@@ -262,8 +249,8 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
                 setMatchAttempted(true);
               }
 
-              if (!livenessVerified && blinkCountRef.current < REQUIRED_BLINKS) {
-                setDetectionStatus(`Blink ${blinkCountRef.current}/${REQUIRED_BLINKS} — stabilize face`);
+              if (!livenessVerified) {
+                setDetectionStatus(`Buka mulut Anda untuk konfirmasi`);
               } else if (matchedProfile) {
                 setDetectionStatus(`Identified: ${matchedProfile.name}`);
               } else if (!matchedProfile && matchAttempted) {
@@ -477,8 +464,8 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
 
               {faceDetected && (
                 <div className={`w-full mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-300 ${livenessVerified ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400' : 'bg-slate-500/10 border border-slate-500/30 text-slate-400'}`}>
-                  {livenessVerified ? <Eye size={14} /> : <EyeOff size={14} className="animate-pulse" />}
-                  <span className="flex-1">{livenessVerified ? 'LIVENESS VERIFIED' : `Blink naturally (${blinkCount}/${REQUIRED_BLINKS})`}</span>
+                  {livenessVerified ? <ShieldCheck size={14} /> : <Loader2 size={14} className="animate-spin" />}
+                  <span className="flex-1">{livenessVerified ? 'LIVENESS VERIFIED' : 'Buka mulut Anda sedikit'}</span>
                 </div>
               )}
 
