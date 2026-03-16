@@ -690,13 +690,13 @@ export default function AdminDashboard() {
                                                          <button 
                                                              onClick={() => setPreviewPhoto(record.photo_url)}
                                                              className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors flex items-center gap-1.5"
-                                                             title="View evidence photo"
+                                                             title="Lihat foto bukti"
                                                          >
                                                              <ImageIcon size={16} />
-                                                             <span className="text-[10px] font-bold uppercase">View Photo</span>
+                                                             <span className="text-[10px] font-bold uppercase">Lihat Foto</span>
                                                          </button>
                                                      ) : (
-                                                         <span className="text-slate-300 italic text-[10px]">No Photo</span>
+                                                         <span className="text-slate-300 italic text-[10px]">Tanpa Foto</span>
                                                      )}
                                                   </td>
                                                   <td className="px-4 py-3 text-right">
@@ -739,7 +739,7 @@ export default function AdminDashboard() {
                  <div className="w-20 h-20 bg-white border border-slate-200 shadow-sm text-slate-300 rounded-3xl flex items-center justify-center mb-6 transform -rotate-6">
                     <Terminal size={40} />
                  </div>
-                 <h2 className="text-2xl font-bold text-slate-800">Select a Session</h2>
+                 <h2 className="text-2xl font-bold text-slate-800">Pilih Sesi</h2>
                  <p className="text-slate-500 mt-2 max-w-sm text-sm leading-relaxed">Choose an active session from the sidebar to view attendance metrics or initialize a new monitoring session.</p>
                </div>
             )}
@@ -759,7 +759,7 @@ export default function AdminDashboard() {
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
                             <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-                            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Incoming Entry</span>
+                            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Absensi Masuk</span>
                         </div>
                         <div className="font-bold text-white text-sm truncate">{latestAttendee.name}</div>
                         <div className="text-slate-400 text-[10px] uppercase font-medium">{latestAttendee.division} • {latestAttendee.status}</div>
@@ -786,18 +786,18 @@ export default function AdminDashboard() {
                                 <Camera size={20} />
                             </div>
                             <div>
-                                <h4 className="text-white font-bold">Attendance Evidence</h4>
-                                <p className="text-slate-400 text-xs uppercase tracking-widest">Verified via Face AI Blink Detection</p>
+                                <h4 className="text-white font-bold">Bukti Kehadiran</h4>
+                                <p className="text-slate-400 text-[10px] uppercase tracking-widest">Diverifikasi via AI Wajah</p>
                             </div>
                         </div>
                         <a 
                             href={previewPhoto} 
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-lg shadow-blue-600/20"
+                            className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold px-4 py-2 rounded-xl transition shadow-lg shadow-blue-600/20"
                             onClick={e => e.stopPropagation()}
                         >
-                            Open Original
+                            Buka File Asli
                         </a>
                     </div>
                 </div>
