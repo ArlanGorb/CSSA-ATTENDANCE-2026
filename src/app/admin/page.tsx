@@ -36,7 +36,7 @@ export default function AdminDashboard() {
   // Simple Auth Check
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === 'admin123') { // Simple hardcoded password for MVP
+    if (password === '8182838485') { // Updated secure password
       setIsAuthenticated(true);
       localStorage.setItem('cssa_admin_auth', 'true');
     } else {
