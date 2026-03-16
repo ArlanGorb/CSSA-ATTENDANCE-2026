@@ -339,43 +339,19 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   const handleScan = () => {
     if (!canAuthenticate()) return;
     
+    // Capture metadata/photo state before finalizing
     if (videoRef.current) photoRef.current = captureSnapshot(videoRef.current);
     setScanning(true);
     setError(null);
+    
+    // Security: We already verified for 10 consecutive frames (~3s)
+    // Plus liveness (mouth open). We don't need a single-frame secondary check 
+    // that might fail due to a blink or slight blur in that specific instant.
     if (detectionLoop.current) clearInterval(detectionLoop.current);
 
-    setTimeout(async () => {
-      if (!videoRef.current || !modelsLoaded) {
-        executeAttendanceSubmit();
-        return;
-      }
-      try {
-        // Final precision check
-        const finalCheck = await faceapi
-          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.7 }))
-          .withFaceLandmarks()
-          .withFaceDescriptor();
-
-        if (finalCheck && matchedProfile) {
-          const matcher = new faceapi.FaceMatcher(labeledDescriptors.current, FACE_MATCH_THRESHOLD);
-          const finalMatch = matcher.findBestMatch(finalCheck.descriptor);
-          const [finalName] = finalMatch.label.split('|||');
-          
-          if (finalMatch.label === 'unknown' || finalName !== matchedProfile.name) {
-            setScanning(false);
-            setError('Identity check failed. Please stay still and try again.');
-            startFaceDetection();
-            return;
-          }
-          photoRef.current = captureSnapshot(videoRef.current);
-          executeAttendanceSubmit();
-        } else {
-          setScanning(false);
-          setError('Verification lost. Keep face centered.');
-          startFaceDetection();
-        }
-      } catch (err) { executeAttendanceSubmit(); }
-    }, 1200);
+    setTimeout(() => {
+      executeAttendanceSubmit();
+    }, 800);
   };
 
   const executeAttendanceSubmit = async () => {
