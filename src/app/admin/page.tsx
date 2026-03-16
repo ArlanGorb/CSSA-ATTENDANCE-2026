@@ -4,6 +4,8 @@ import dynamic from 'next/dynamic';
 import { supabase } from '@/lib/supabase';
 import { QRCodeSVG } from 'qrcode.react';
 import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, MapPin, Archive, RotateCcw, Terminal, ShieldAlert, Image as ImageIcon, Camera, Menu } from 'lucide-react';
+
+const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false });
 import { format } from 'date-fns';
 
 const DIVISIONS = [
@@ -29,6 +31,11 @@ export default function AdminDashboard() {
   const [showSecurityDashboard, setShowSecurityDashboard] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null); // State for photo modal
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [newMeetingLocation, setNewMeetingLocation] = useState<{lat: number | null, lng: number | null, radius: number}>({ 
+    lat: null, 
+    lng: null, 
+    radius: 100 
+  });
 
   // Simple Auth Check
   const handleLogin = (e: React.FormEvent) => {
@@ -69,8 +76,8 @@ export default function AdminDashboard() {
             table: 'attendance',
             filter: `meeting_id=eq.${selectedMeeting.id}`,
           },
-          (payload) => {
-            setAttendances((prev) => [payload.new, ...prev]);
+          (payload: any) => {
+            setAttendances((prev) => [payload.new as any, ...prev]);
             setLatestAttendee(payload.new);
             // Auto hide notification after 5 seconds
             setTimeout(() => {
@@ -86,8 +93,8 @@ export default function AdminDashboard() {
             table: 'security_logs',
             filter: `meeting_id=eq.${selectedMeeting.id}`,
           },
-          (payload) => {
-            setSecurityLogs((prev) => [payload.new, ...prev]);
+          (payload: any) => {
+            setSecurityLogs((prev) => [payload.new as any, ...prev]);
             // Flash dashboard red on attack
             setShowSecurityDashboard(true);
           }
@@ -189,6 +196,9 @@ export default function AdminDashboard() {
       date: form.date.value,
       start_time: form.startTime.value,
       attendance_limit_minutes: parseInt(form.limit.value),
+      latitude: form.latitude.value ? parseFloat(form.latitude.value) : null,
+      longitude: form.longitude.value ? parseFloat(form.longitude.value) : null,
+      radius_meters: form.radius.value ? parseInt(form.radius.value) : 100,
       is_archived: false,
       qr_token: crypto.randomUUID(), // Initial token
       qr_expiry: new Date(Date.now() + 60000 * 5).toISOString()
@@ -471,6 +481,69 @@ export default function AdminDashboard() {
                     <div>
                        <label className="block text-sm font-medium text-slate-700 mb-2">Tolerance (Minutes)</label>
                        <input name="limit" type="number" defaultValue={15} required className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
+                    </div>
+                    
+                    {/* GPS Configuration */}
+                    <div className="col-span-1 md:col-span-2 space-y-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                       <div className="flex justify-between items-center">
+                          <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                             <MapPin size={16} className="text-blue-600" /> Area Pengambilan Absen (Geofencing)
+                          </h4>
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              if (navigator.geolocation) {
+                                navigator.geolocation.getCurrentPosition((pos) => {
+                                  setNewMeetingLocation(prev => ({ 
+                                    ...prev, 
+                                    lat: pos.coords.latitude, 
+                                    lng: pos.coords.longitude 
+                                  }));
+                                }, (err) => alert("Failed to get location: " + err.message));
+                              }
+                            }}
+                            className="text-[10px] font-bold uppercase py-1.5 px-3 bg-white border border-slate-200 rounded-lg hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-all shadow-sm"
+                          >
+                             Use My Location
+                          </button>
+                       </div>
+
+                       <div className="relative group">
+                          <MapPicker 
+                             lat={newMeetingLocation.lat} 
+                             lng={newMeetingLocation.lng} 
+                             radius={newMeetingLocation.radius}
+                             onChange={(lat, lng) => setNewMeetingLocation(prev => ({ ...prev, lat, lng }))}
+                          />
+                       </div>
+
+                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="hidden">
+                             <input name="latitude" value={newMeetingLocation.lat || ''} readOnly />
+                             <input name="longitude" value={newMeetingLocation.lng || ''} readOnly />
+                          </div>
+                          <div className="col-span-1 md:col-span-2">
+                             <p className="text-[10px] text-slate-500 font-medium">
+                                {newMeetingLocation.lat && newMeetingLocation.lng 
+                                  ? `📍 COORDINATES: ${newMeetingLocation.lat.toFixed(6)}, ${newMeetingLocation.lng.toFixed(6)}` 
+                                  : '⚠️ TAP ON MAP TO SET ATTENDANCE LOCATION'}
+                             </p>
+                          </div>
+                          <div>
+                             <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 ml-1">Radius (Meters)</label>
+                             <input 
+                                name="radius" 
+                                type="number" 
+                                value={newMeetingLocation.radius} 
+                                onChange={(e) => setNewMeetingLocation(prev => ({ ...prev, radius: parseInt(e.target.value) || 0 }))}
+                                placeholder="100" 
+                                className="w-full bg-white border border-slate-100 text-slate-900 px-4 py-2 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm" 
+                             />
+                          </div>
+                       </div>
+                       <p className="text-[10px] text-slate-400 italic">
+                          *Mahasiswa harus berada dalam radius {newMeetingLocation.radius}m dari titik lokasi untuk bisa absen.
+                       </p>
                     </div>
                     <div className="col-span-1 md:col-span-2 flex justify-end gap-3 mt-4 pt-4 border-t border-slate-100">
                       <button type="button" onClick={() => setCreateFormVisible(false)} className="px-6 py-2.5 text-slate-600 font-medium hover:bg-slate-50 border border-transparent hover:border-slate-200 rounded-xl transition-all">Cancel</button>
