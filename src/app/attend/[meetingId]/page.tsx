@@ -100,11 +100,11 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
           faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
         ]);
         setModelsLoaded(true);
-        setDetectionStatus('AI Ready');
+        setDetectionStatus('Sistem Siap');
       } catch (err) {
         console.error('[Init] Error:', err);
-        setModelLoadError('Failed to initialize system. Please refresh.');
-        setDetectionStatus('AI Error');
+        setModelLoadError('Gagal inisialisasi sistem. Silakan muat ulang.');
+        setDetectionStatus('Kesalahan AI');
       }
     };
     init();
@@ -177,7 +177,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
     setMatchedProfile(null);
     setMatchAttempted(false);
     setLivenessVerified(false);
-    setDetectionStatus('Scanning for face...');
+    setDetectionStatus('Memindai wajah...');
 
     let recognitionCounter = 0;
 
@@ -198,7 +198,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
           if (faceArea < FACE_MIN_SIZE_RATIO) {
             noFaceCount.current++;
             faceConfirmCount.current = Math.max(0, faceConfirmCount.current - 1);
-            setDetectionStatus('Move closer to camera');
+            setDetectionStatus('Dekatkan wajah ke kamera');
             setFaceBox(null);
           } else {
             faceConfirmCount.current++;
@@ -257,14 +257,14 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
               if (!livenessVerified) {
                 setDetectionStatus(`Buka mulut Anda untuk konfirmasi`);
               } else if (matchedProfile) {
-                setDetectionStatus(`Identified: ${matchedProfile.name}`);
+                setDetectionStatus(`Teridentifikasi: ${matchedProfile.name}`);
               } else if (!matchedProfile && matchAttempted) {
-                setDetectionStatus('IDENTITY UNKNOWN — REGISTER REQUIRED');
+                setDetectionStatus('IDENTITAS TIDAK DIKENAL — WAJIB REGISTRASI');
               } else {
-                setDetectionStatus('Verifying identity...');
+                setDetectionStatus('Memverifikasi identitas...');
               }
             } else {
-              setDetectionStatus(`STABILIZING... (${faceConfirmCount.current}/${FACE_CONFIRM_FRAMES})`);
+              setDetectionStatus(`STABILISASI... (${faceConfirmCount.current}/${FACE_CONFIRM_FRAMES})`);
             }
           }
         } else {
@@ -274,14 +274,14 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
           if (noFaceCount.current > 3) {
             setFaceDetected(false);
             setMatchedProfile(null);
-            setDetectionStatus('Look directly at camera');
+            setDetectionStatus('Lihat langsung ke kamera');
           }
         }
 
         // Multiple face detection for extra security
         const allFaces = await faceapi.detectAllFaces(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 }));
         if (allFaces.length > 1) {
-          setDetectionStatus('Multiple faces — identification blocked');
+          setDetectionStatus('Beberapa wajah — identifikasi diblokir');
           setFaceDetected(false);
           setFaceBox(null);
           faceConfirmCount.current = 0;
@@ -312,7 +312,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
         }
       }, 100);
     } catch (err) {
-      setError("Camera access is required for High-Precision Face Scan.");
+      setError("Akses kamera diperlukan untuk Pemindaian Wajah Presisi.");
     }
   };
 
@@ -410,19 +410,19 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
             </div>
-            <p className="text-xs tracking-[0.2em] font-medium text-blue-300">SYSTEM INITIALIZING</p>
+            <p className="text-xs tracking-[0.2em] font-medium text-blue-300">INISIALISASI SISTEM</p>
           </div>
         </div>
       </div>
     );
   }
 
-  if (!token) return <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6 text-center"><AlertOctagon size={48} className="text-red-500 mb-4" /><h1 className="text-xl font-bold text-gray-900 mb-2">Invalid Access</h1><p className="text-gray-500">Please scan the QR code provided by the Admin.</p></div>;
+  if (!token) return <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6 text-center"><AlertOctagon size={48} className="text-red-500 mb-4" /><h1 className="text-xl font-bold text-gray-900 mb-2">Akses Tidak Sah</h1><p className="text-gray-500">Silakan scan kode QR yang disediakan oleh Admin.</p></div>;
 
-  if (showBreachAlert) return <div className="fixed inset-0 z-50 bg-red-950 flex flex-col items-center justify-center text-white overflow-hidden text-center"><div className="absolute inset-0 bg-red-600/20 animate-[pulse_0.5s_infinite]"></div><AlertOctagon size={100} className="text-red-500 mb-6 animate-bounce" /><h1 className="text-6xl font-black tracking-widest text-red-500 mb-2 uppercase">SECURITY BREACH</h1><p className="text-xl text-red-300 font-mono tracking-wide uppercase max-w-md bg-black/50 p-4 border border-red-500/50 mt-4 rounded-lg">Multiple check-ins detected <br/> from a single device footprint.</p><div className="mt-12 text-sm text-red-400 font-mono flex items-center gap-2 opacity-70"><span className="w-2 h-2 bg-red-500 rounded-full animate-ping"></span>INCIDENT LOGGED [DEVICE_ID: {deviceId.substring(0,8)}...]</div></div>;
+  if (showBreachAlert) return <div className="fixed inset-0 z-50 bg-red-950 flex flex-col items-center justify-center text-white overflow-hidden text-center"><div className="absolute inset-0 bg-red-600/20 animate-[pulse_0.5s_infinite]"></div><AlertOctagon size={100} className="text-red-500 mb-6 animate-bounce" /><h1 className="text-6xl font-black tracking-widest text-red-500 mb-2 uppercase">PELANGGARAN KEAMANAN</h1><p className="text-xl text-red-300 font-mono tracking-wide uppercase max-w-md bg-black/50 p-4 border border-red-500/50 mt-4 rounded-lg">Beberapa absensi terdeteksi <br/> dari satu sidik jari perangkat.</p><div className="mt-12 text-sm text-red-400 font-mono flex items-center gap-2 opacity-70"><span className="w-2 h-2 bg-red-500 rounded-full animate-ping"></span>KEJADIAN DICATAT [ID_PERANGKAT: {deviceId.substring(0,8)}...]</div></div>;
 
   if (status) {
-    return <div className="fixed inset-0 z-50 bg-gradient-to-br from-green-900 via-emerald-900 to-teal-900 flex flex-col items-center justify-center text-white text-center"><CheckCircle size={80} className="text-green-400 mb-8" /><h1 className="text-5xl font-bold mb-4">ACCESS GRANTED</h1><div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl p-6 max-w-xs w-full"><p className="text-2xl font-bold text-white">{status}</p><p className="text-white/60 text-xs mt-2">Verified via Face AI as <span className="text-emerald-300 font-bold">{matchedProfile?.name || 'User'}</span></p></div><p className="mt-12 text-emerald-400/60 text-sm tracking-[0.2em]">You may close this window</p></div>;
+    return <div className="fixed inset-0 z-50 bg-gradient-to-br from-green-900 via-emerald-900 to-teal-900 flex flex-col items-center justify-center text-white text-center"><CheckCircle size={80} className="text-green-400 mb-8" /><h1 className="text-5xl font-bold mb-4">AKSES DITERIMA</h1><div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl p-6 max-w-xs w-full"><p className="text-2xl font-bold text-white">{status}</p><p className="text-white/60 text-xs mt-2">Terverifikasi via Face AI sebagai <span className="text-emerald-300 font-bold">{matchedProfile?.name || 'User'}</span></p></div><p className="mt-12 text-emerald-400/60 text-sm tracking-[0.2em]">Anda boleh menutup jendela ini</p></div>;
   }
 
   return (
@@ -433,7 +433,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
           {showCamera ? (
             <div className="flex flex-col items-center animate-fade-in-up">
               <div className="flex justify-between w-full mb-4 items-center">
-                <h2 className="text-white font-bold text-lg flex items-center gap-2"><Camera size={20} className="text-blue-400" />High-Precision Scan</h2>
+                <h2 className="text-white font-bold text-lg flex items-center gap-2"><Camera size={20} className="text-blue-400" />Scan Presisi Tinggi</h2>
                 <button onClick={stopCamera} className="text-slate-400 hover:text-red-400 transition"><XCircle size={24} /></button>
               </div>
 
@@ -446,7 +446,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
               {faceDetected && (
                 <div className={`w-full mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-300 ${livenessVerified ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400' : 'bg-slate-500/10 border border-slate-500/30 text-slate-400'}`}>
                   {livenessVerified ? <ShieldCheck size={14} /> : <Loader2 size={14} className="animate-spin" />}
-                  <span className="flex-1">{livenessVerified ? 'LIVENESS VERIFIED' : 'Buka mulut Anda sedikit'}</span>
+                  <span className="flex-1">{livenessVerified ? 'LIVENESS TERVERIFIKASI' : 'Buka mulut Anda sedikit'}</span>
                 </div>
               )}
 
@@ -454,7 +454,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
                 <div className="w-full mb-4 bg-green-500/10 border border-green-500/20 rounded-xl p-4 animate-fade-in-up flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-400 font-bold">{matchedProfile.name.charAt(0).toUpperCase()}</div>
                   <div className="flex-1">
-                    <p className="text-green-200 text-[9px] font-bold uppercase tracking-widest">Profile Matched</p>
+                    <p className="text-green-200 text-[9px] font-bold uppercase tracking-widest">Profil Cocok</p>
                     <p className="text-white font-bold leading-tight">{matchedProfile.name}</p>
                     <p className="text-green-300/70 text-xs">{matchedProfile.division}</p>
                   </div>
@@ -463,10 +463,10 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
 
               {faceDetected && !matchedProfile && matchAttempted && (
                 <div className="w-full mb-4 bg-red-500/10 border border-red-500/20 rounded-xl p-4 animate-fade-in-up">
-                  <p className="text-red-400 text-xs font-bold mb-2 flex items-center gap-2"><AlertOctagon size={14} /> IDENTITY UNKNOWN</p>
-                  <p className="text-slate-400 text-xs mb-3 font-medium">This face is not in our record. Please register your profile first.</p>
+                  <p className="text-red-400 text-xs font-bold mb-2 flex items-center gap-2"><AlertOctagon size={14} /> IDENTITAS TIDAK DIKENAL</p>
+                  <p className="text-slate-400 text-xs mb-3 font-medium">Wajah ini tidak terdaftar di sistem kami. Silakan daftarkan profil Anda terlebih dahulu.</p>
                   <a href="/register" className="flex items-center justify-center gap-2 w-full py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-xs font-bold transition-all shadow-lg active:scale-95">
-                    <UserPlus size={14} /> Register Face
+                    <UserPlus size={14} /> Daftar Wajah
                   </a>
                 </div>
               )}
@@ -481,26 +481,26 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
               {error && <div className="w-full mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2 text-red-400 text-xs font-medium animate-pulse"><AlertOctagon size={14} /> {error}</div>}
 
               <button onClick={handleScan} disabled={scanning || !canAuthenticate()} className={`w-full font-bold py-4 rounded-xl shadow-lg transition-all ${canAuthenticate() && !scanning ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:brightness-110 active:scale-95' : 'bg-slate-700/50 text-slate-500 cursor-not-allowed'}`}>
-                {scanning ? 'Finalizing...' : canAuthenticate() ? 'Authenticate Now' : !matchedProfile && matchAttempted ? 'Registration Required' : 'Stabilize Your Face'}
+                {scanning ? 'Menyelesaikan...' : canAuthenticate() ? 'Autentikasi Sekarang' : !matchedProfile && matchAttempted ? 'Wajib Registrasi' : 'Stabilkan Wajah Anda'}
               </button>
             </div>
           ) : (
             <div className="text-center">
               <div className="inline-block p-4 rounded-full bg-blue-500/10 mb-6 border border-blue-500/20"><ScanLine className="text-blue-400 w-10 h-10" /></div>
-              <h1 className="text-3xl font-bold text-white tracking-tight">CSSA Presence</h1>
-              <p className="text-sm text-blue-200/60 mt-2 mb-8">High-Precision Identification System v2.0</p>
+              <h1 className="text-3xl font-bold text-white tracking-tight">Presensi CSSA</h1>
+              <p className="text-sm text-blue-200/60 mt-2 mb-8">Sistem Identifikasi Presisi Tinggi v2.0</p>
               
               <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-8 text-xs text-blue-100/70 leading-relaxed text-left space-y-2">
-                <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Ensure good lighting</p>
-                <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Look directly at the camera</p>
-                <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Blink when prompted for liveness</p>
+                <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Pastikan pencahayaan cukup</p>
+                <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Lihat langsung ke kamera</p>
+                <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Buka mulut saat diminta</p>
               </div>
 
               <button onClick={startCamera} disabled={!modelsLoaded} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-5 rounded-2xl shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 border border-white/10">
-                {modelsLoaded ? "Secure Identification" : "Initializing AI..."}
+                {modelsLoaded ? "Identifikasi Aman" : "Inisialisasi AI..."}
               </button>
               
-              <p className="text-slate-600 text-xs mt-6">First time? <a href="/register" className="text-blue-400 font-bold hover:underline">Register your face</a></p>
+              <p className="text-slate-600 text-xs mt-6">Baru di sini? <a href="/register" className="text-blue-400 font-bold hover:underline">Daftarkan wajah Anda</a></p>
             </div>
           )}
         </div>

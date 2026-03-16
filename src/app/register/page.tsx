@@ -33,8 +33,8 @@ export default function RegisterFace() {
   const [showCamera, setShowCamera] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
   const [faceBox, setFaceBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const [detectionStatus, setDetectionStatus] = useState('Loading AI...');
   const [faceConfidence, setFaceConfidence] = useState(0);
+  const [detectionStatus, setDetectionStatus] = useState('Memuat AI...');
 
   // Capture states
   const [capturing, setCapturing] = useState(false);
@@ -67,12 +67,12 @@ export default function RegisterFace() {
           faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
         ]);
         setModelsLoaded(true);
-        setDetectionStatus('AI Ready');
+        setDetectionStatus('AI Siap');
         console.log('[FaceAPI] All models loaded for registration');
       } catch (err) {
         console.error('[FaceAPI] Model load error:', err);
-        setModelLoadError('Failed to load Face AI models. Please refresh.');
-        setDetectionStatus('AI Error');
+        setModelLoadError('Gagal memuat model AI. Silakan muat ulang.');
+        setDetectionStatus('Kesalahan AI');
       }
     };
     loadModels();
@@ -131,7 +131,7 @@ export default function RegisterFace() {
         }
       }, 100);
     } catch (err) {
-      setError('Camera access is required for face registration.');
+      setError('Akses kamera diperlukan untuk pendaftaran wajah.');
     }
   };
 
@@ -160,7 +160,7 @@ export default function RegisterFace() {
     faceConfirmCount.current = 0;
     setFaceDetected(false);
     setFaceBox(null);
-    setDetectionStatus('Scanning for face...');
+    setDetectionStatus('Memindai wajah...');
 
     detectionLoop.current = setInterval(async () => {
       if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) return;
@@ -178,7 +178,7 @@ export default function RegisterFace() {
           const faceArea = (detection.detection.box.width * detection.detection.box.height) / (videoWidth * videoHeight);
 
           if (faceArea < 0.08) {
-            setDetectionStatus('Move closer to camera');
+            setDetectionStatus('Dekatkan wajah ke kamera');
             setFaceBox(null);
             faceConfirmCount.current = Math.max(0, faceConfirmCount.current - 1);
             setDuplicateFound(null);
@@ -193,7 +193,7 @@ export default function RegisterFace() {
                 // Only flag if it's NOT the same person being updated (optional logic)
                 // For safety, we block any existing face from registering a new name
                 setDuplicateFound({ name: dName, division: dDiv });
-                setDetectionStatus('FACE ALREADY REGISTERED');
+                setDetectionStatus('WAJAH TERDAFTAR');
               } else {
                 setDuplicateFound(null);
               }
@@ -217,10 +217,10 @@ export default function RegisterFace() {
             if (faceConfirmCount.current >= 5) {
               setFaceDetected(true);
               if (!duplicateFound) {
-                setDetectionStatus('Face locked — ready to capture');
+                setDetectionStatus('Wajah terkunci — siap ambil sampel');
               }
             } else {
-              setDetectionStatus(`Verifying face... (${faceConfirmCount.current}/5)`);
+              setDetectionStatus(`Memverifikasi wajah... (${faceConfirmCount.current}/5)`);
             }
           }
         } else {
@@ -229,7 +229,7 @@ export default function RegisterFace() {
           setDuplicateFound(null);
           if (faceConfirmCount.current === 0) {
             setFaceDetected(false);
-            setDetectionStatus('No face detected — look at camera');
+            setDetectionStatus('Wajah tidak terdeteksi — lihat kamera');
           }
         }
       } catch (err) {
@@ -292,15 +292,14 @@ export default function RegisterFace() {
 
       // Wait between captures for slightly different angles
       if (i < CAPTURE_COUNT - 1) {
-        setDetectionStatus(`Captured ${i + 1}/${CAPTURE_COUNT} — hold still...`);
+        setDetectionStatus(`Sampel ${i + 1}/${CAPTURE_COUNT} diambil — tahan posisi...`);
         await new Promise(r => setTimeout(r, CAPTURE_INTERVAL_MS));
       }
     }
 
     if (descriptors.length >= 3) {
-      // Average all descriptors for a robust representation
       setCapturedDescriptors(descriptors);
-      setDetectionStatus(`✓ ${descriptors.length} face samples captured!`);
+      setDetectionStatus(`✓ ${descriptors.length} sampel wajah diambil!`);
 
       // Submit to API
       await submitFaceProfile(descriptors);
@@ -313,7 +312,7 @@ export default function RegisterFace() {
 
   const submitFaceProfile = async (descriptors: Float32Array[]) => {
     setSubmitting(true);
-    setDetectionStatus('Saving face profile...');
+    setDetectionStatus('Menyimpan profil wajah...');
 
     try {
       // Average the descriptors
@@ -341,17 +340,17 @@ export default function RegisterFace() {
       if (res.ok) {
         setSuccess(true);
         setResultMessage(data.updated
-          ? `Face profile for "${name}" has been updated!`
-          : `Face profile for "${name}" registered successfully!`
+          ? `Profil wajah "${name}" telah diperbarui!`
+          : `Profil wajah "${name}" berhasil didaftarkan!`
         );
         stopCamera();
       } else {
-        setError(data.error || 'Failed to save face profile.');
+        setError(data.error || 'Gagal menyimpan profil wajah.');
         setCapturing(false);
         startFaceDetection();
       }
     } catch (err) {
-      setError('Network error. Please try again.');
+      setError('Kesalahan jaringan. Silakan coba lagi.');
       setCapturing(false);
       startFaceDetection();
     } finally {
@@ -377,7 +376,7 @@ export default function RegisterFace() {
           </div>
 
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4 bg-clip-text text-transparent bg-gradient-to-r from-green-200 via-white to-green-200 text-center">
-            FACE REGISTERED
+            WAJAH TERDAFTAR
           </h1>
 
           <div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl p-6 max-w-sm w-full mx-4 text-center">
@@ -401,14 +400,14 @@ export default function RegisterFace() {
               className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-xl font-medium transition-all flex items-center gap-2"
             >
               <UserPlus size={18} />
-              Register Another
+              Daftar Lagi
             </button>
             <Link
               href="/"
               className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl font-medium transition-all flex items-center gap-2 justify-center"
             >
               <ArrowLeft size={18} />
-              Back to Home
+              Kembali ke Beranda
             </Link>
           </div>
         </div>
@@ -446,7 +445,7 @@ export default function RegisterFace() {
               <div className="flex justify-between w-full mb-4 items-center">
                 <h2 className="text-white font-bold text-lg flex items-center gap-2">
                   <Camera size={20} className="text-violet-400" />
-                  Face Registration
+                  Registrasi Wajah
                 </h2>
                 <button onClick={stopCamera} className="text-slate-400 hover:text-red-400 transition" type="button">
                   <XCircle size={24} />
@@ -493,7 +492,7 @@ export default function RegisterFace() {
               {capturing && (
                 <div className="w-full mb-4">
                   <div className="flex justify-between text-xs text-slate-400 mb-1.5">
-                    <span>Capturing face samples</span>
+                    <span>Mengambil sampel wajah</span>
                     <span className="text-violet-400 font-bold">{captureProgress}/{CAPTURE_COUNT}</span>
                   </div>
                   <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -564,7 +563,7 @@ export default function RegisterFace() {
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
                     <div className="w-48 h-56 border-2 border-dashed border-white/60 rounded-[40%] shadow-[0_0_0_999px_rgba(0,0,0,0.5)]"></div>
                     <div className="absolute bottom-4 text-white/80 text-xs font-bold uppercase tracking-widest bg-black/50 px-3 py-1 rounded">
-                      Align Face Here
+                      Posisikan Wajah Di Sini
                     </div>
                   </div>
                 )}
@@ -575,7 +574,7 @@ export default function RegisterFace() {
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="bg-black/60 backdrop-blur-sm px-4 py-2 rounded-full text-violet-300 text-sm font-bold tracking-wider flex items-center gap-2">
                         <Loader2 size={16} className="animate-spin" />
-                        {submitting ? 'SAVING...' : 'CAPTURING...'}
+                        {submitting ? 'MENYIMPAN...' : 'MENGAMBIL...'}
                       </div>
                     </div>
                   </div>
@@ -604,22 +603,22 @@ export default function RegisterFace() {
                 {submitting ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
-                    <span>Saving Profile...</span>
+                    <span>Menyimpan Profil...</span>
                   </>
                 ) : capturing ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
-                    <span>Capturing... ({captureProgress}/{CAPTURE_COUNT})</span>
+                    <span>Mengambil... ({captureProgress}/{CAPTURE_COUNT})</span>
                   </>
                 ) : faceDetected ? (
                   <>
                     <Sparkles size={18} />
-                    <span>Capture & Register Face</span>
+                    <span>Ambil Sampel & Daftar</span>
                   </>
                 ) : (
                   <>
                     <ShieldOff size={18} />
-                    <span>Waiting for Face...</span>
+                    <span>Menunggu Wajah...</span>
                   </>
                 )}
               </button>
@@ -630,8 +629,8 @@ export default function RegisterFace() {
                 <div className="inline-block p-3 rounded-full bg-violet-500/20 mb-4 ring-1 ring-violet-400/30">
                   <UserPlus className="text-violet-400 w-8 h-8" />
                 </div>
-                <h1 className="text-3xl font-bold text-white tracking-tight">Register Face</h1>
-                <p className="text-sm text-violet-200/60 mt-2 font-light tracking-wide">Register your face for attendance verification.</p>
+                <h1 className="text-3xl font-bold text-white tracking-tight">Daftar Wajah</h1>
+                <p className="text-sm text-violet-200/60 mt-2 font-light tracking-wide">Daftarkan wajah Anda untuk verifikasi presensi.</p>
 
                 {/* AI Model Status */}
                 <div className={`inline-flex items-center gap-2 mt-3 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${
@@ -642,7 +641,7 @@ export default function RegisterFace() {
                       : 'bg-blue-500/10 text-blue-400 border border-blue-500/20 animate-pulse'
                 }`}>
                   <div className={`w-1.5 h-1.5 rounded-full ${modelsLoaded ? 'bg-green-400' : modelLoadError ? 'bg-red-400' : 'bg-blue-400 animate-ping'}`}></div>
-                  {modelsLoaded ? 'Face AI Ready' : modelLoadError ? 'AI Error' : 'Loading Face AI...'}
+                  {modelsLoaded ? 'AI Siap' : modelLoadError ? 'AI Error' : 'Memuat AI...'}
                 </div>
               </div>
 
@@ -655,18 +654,18 @@ export default function RegisterFace() {
 
               <div className="space-y-6">
                 <div className="group">
-                  <label className="block text-xs font-semibold text-violet-300 uppercase tracking-wider mb-2 ml-1">Full Name</label>
+                  <label className="block text-xs font-semibold text-violet-300 uppercase tracking-wider mb-2 ml-1">Nama Lengkap</label>
                   <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     required
                     className="w-full bg-slate-800/50 border border-white/10 text-white p-4 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all placeholder:text-slate-600 group-hover:border-violet-500/30"
-                    placeholder="e.g. John Doe"
+                    placeholder="Contoh: John Doe"
                   />
                 </div>
 
                 <div className="group">
-                  <label className="block text-xs font-semibold text-violet-300 uppercase tracking-wider mb-2 ml-1">Division</label>
+                  <label className="block text-xs font-semibold text-violet-300 uppercase tracking-wider mb-2 ml-1">Divisi</label>
                   <div className="relative">
                     <select
                       value={division}
@@ -674,7 +673,7 @@ export default function RegisterFace() {
                       required
                       className="w-full bg-slate-800/50 border border-white/10 text-white p-4 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none appearance-none transition-all group-hover:border-violet-500/30"
                     >
-                      <option value="" className="bg-slate-900 text-slate-400">Select Division...</option>
+                      <option value="" className="bg-slate-900 text-slate-400">Pilih Divisi...</option>
                       {DIVISIONS.map(div => <option key={div} value={div} className="bg-slate-900">{div}</option>)}
                     </select>
                     <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
@@ -692,12 +691,12 @@ export default function RegisterFace() {
                   {!modelsLoaded ? (
                     <>
                       <Loader2 size={18} className="animate-spin" />
-                      <span>Loading Face AI...</span>
+                      <span>Memuat AI...</span>
                     </>
                   ) : (
                     <>
                       <Camera size={18} />
-                      <span>Open Camera</span>
+                      <span>Buka Kamera</span>
                     </>
                   )}
                 </button>
@@ -706,7 +705,7 @@ export default function RegisterFace() {
               {/* Navigation */}
               <div className="mt-6 text-center">
                 <Link href="/" className="text-sm text-slate-500 hover:text-slate-300 transition-colors">
-                  ← Back to Home
+                  ← Kembali ke Beranda
                 </Link>
               </div>
             </>
