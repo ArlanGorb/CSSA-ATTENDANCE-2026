@@ -44,6 +44,12 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('cssa_admin_auth');
+    setSelectedMeeting(null);
+  };
+
   useEffect(() => {
     const auth = localStorage.getItem('cssa_admin_auth');
     if (auth === 'true') setIsAuthenticated(true);
@@ -436,11 +442,11 @@ export default function AdminDashboard() {
                  CSSA Hub
               </h1>
            </div>
-           <button onClick={() => setIsAuthenticated(false)} className="text-sm font-bold text-slate-500 hover:text-red-500 transition-colors">Sign Out</button>
+           <button onClick={handleLogout} className="text-sm font-bold text-slate-500 hover:text-red-500 transition-colors">Sign Out</button>
         </header>
         <header className="px-8 py-4 flex justify-end items-center shrink-0 z-10 hidden lg:flex border-b border-slate-100 bg-white">
            <button 
-             onClick={() => setIsAuthenticated(false)}
+             onClick={handleLogout}
              className="text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors bg-slate-50 hover:bg-slate-100 px-4 py-2 rounded-lg"
            >
              Sign Out

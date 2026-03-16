@@ -147,6 +147,11 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
       setDeviceId(result.visitorId);
     };
     initFingerprint();
+
+    // SECURITY: Poison pill for admin session. 
+    // If a student opens this page, ensure no admin session is active on this device.
+    localStorage.removeItem('cssa_admin_auth');
+    
     return () => clearTimeout(timer);
   }, []);
 
