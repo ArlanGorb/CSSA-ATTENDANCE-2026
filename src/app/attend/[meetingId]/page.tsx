@@ -13,10 +13,10 @@ const DIVISIONS = [
 
 // Face Detection Configuration
 const FACE_DETECTION_INTERVAL_MS = 300;
-const FACE_SCORE_THRESHOLD = 0.5;
-const FACE_CONFIRM_FRAMES = 5;
-const FACE_MIN_SIZE_RATIO = 0.08;
-const FACE_MATCH_THRESHOLD = 0.50; // Stricter threshold
+const FACE_SCORE_THRESHOLD = 0.6; // Higher threshold for detection confidence
+const FACE_CONFIRM_FRAMES = 10; // More frames for stability (approx 3 seconds)
+const FACE_MIN_SIZE_RATIO = 0.12; // Face must be larger/closer (at least 12% of screen)
+const FACE_MATCH_THRESHOLD = 0.45; // Stricter = Higher Accuracy
 
 // Liveness Detection (Blink)
 const EAR_THRESHOLD = 0.22; // Eye Aspect Ratio below this = eye closed
@@ -186,7 +186,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
 
       try {
         const fullDetection = await faceapi
-          .detectSingleFace(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: FACE_SCORE_THRESHOLD }))
+          .detectSingleFace(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.6 }))
           .withFaceLandmarks();
 
         if (fullDetection) {
@@ -210,12 +210,13 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
             const scaleX = displayWidth / videoWidth;
             const scaleY = displayHeight / videoHeight;
 
-            setFaceBox({
+            const currentFaceBox = {
               x: displayWidth - (det.box.x * scaleX) - (det.box.width * scaleX),
               y: det.box.y * scaleY,
               width: det.box.width * scaleX,
               height: det.box.height * scaleY,
-            });
+            };
+            setFaceBox(currentFaceBox);
 
             // Blink detection
             const landmarks = fullDetection.landmarks.positions;
@@ -237,10 +238,12 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
             if (faceConfirmCount.current >= FACE_CONFIRM_FRAMES) {
               setFaceDetected(true);
               recognitionCounter++;
+              
+              // Only attempt recognition if not already matched and face is stable
               if (recognitionCounter % 3 === 0 && labeledDescriptors.current.length > 0 && !matchedProfile) {
                 try {
                   const recDetection = await faceapi
-                    .detectSingleFace(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: FACE_SCORE_THRESHOLD }))
+                    .detectSingleFace(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.6 }))
                     .withFaceLandmarks()
                     .withFaceDescriptor();
 
@@ -260,18 +263,16 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
               }
 
               if (!livenessVerified && blinkCountRef.current < REQUIRED_BLINKS) {
-                setDetectionStatus(`Blink ${blinkCountRef.current}/${REQUIRED_BLINKS} — please blink naturally`);
+                setDetectionStatus(`Blink ${blinkCountRef.current}/${REQUIRED_BLINKS} — stabilize face`);
               } else if (matchedProfile) {
                 setDetectionStatus(`Identified: ${matchedProfile.name}`);
-              } else if (labeledDescriptors.current.length === 0) {
-                setDetectionStatus('Face verified ✓ (no profiles)');
               } else if (!matchedProfile && matchAttempted) {
                 setDetectionStatus('IDENTITY UNKNOWN — REGISTER REQUIRED');
               } else {
-                setDetectionStatus('Identifying face...');
+                setDetectionStatus('Verifying identity...');
               }
             } else {
-              setDetectionStatus(`Verifying face... (${faceConfirmCount.current}/${FACE_CONFIRM_FRAMES})`);
+              setDetectionStatus(`STABILIZING... (${faceConfirmCount.current}/${FACE_CONFIRM_FRAMES})`);
             }
           }
         } else {
@@ -281,13 +282,14 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
           if (noFaceCount.current > 3) {
             setFaceDetected(false);
             setMatchedProfile(null);
-            setDetectionStatus('No face detected — look at camera');
+            setDetectionStatus('Look directly at camera');
           }
         }
 
-        const allFaces = await faceapi.detectAllFaces(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: FACE_SCORE_THRESHOLD }));
+        // Multiple face detection for extra security
+        const allFaces = await faceapi.detectAllFaces(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 }));
         if (allFaces.length > 1) {
-          setDetectionStatus('Multiple faces — only 1 person allowed');
+          setDetectionStatus('Multiple faces — identification blocked');
           setFaceDetected(false);
           setFaceBox(null);
           faceConfirmCount.current = 0;
@@ -318,7 +320,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
         }
       }, 100);
     } catch (err) {
-      setError("Camera access is required for Face Scan to verify your attendance.");
+      setError("Camera access is required for High-Precision Face Scan.");
     }
   };
 
@@ -343,10 +345,8 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   };
 
   const handleScan = () => {
-    if (!canAuthenticate()) {
-      setError('Cannot authenticate. Face not registered or identity mismatch.');
-      return;
-    }
+    if (!canAuthenticate()) return;
+    
     if (videoRef.current) photoRef.current = captureSnapshot(videoRef.current);
     setScanning(true);
     setError(null);
@@ -358,14 +358,20 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
         return;
       }
       try {
-        const finalCheck = await faceapi.detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: FACE_SCORE_THRESHOLD })).withFaceLandmarks().withFaceDescriptor();
+        // Final precision check
+        const finalCheck = await faceapi
+          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.7 }))
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+
         if (finalCheck && matchedProfile) {
           const matcher = new faceapi.FaceMatcher(labeledDescriptors.current, FACE_MATCH_THRESHOLD);
           const finalMatch = matcher.findBestMatch(finalCheck.descriptor);
           const [finalName] = finalMatch.label.split('|||');
+          
           if (finalMatch.label === 'unknown' || finalName !== matchedProfile.name) {
             setScanning(false);
-            setError('Face identity changed or mismatch. Please look at camera.');
+            setError('Identity check failed. Please stay still and try again.');
             startFaceDetection();
             return;
           }
@@ -373,11 +379,11 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
           executeAttendanceSubmit();
         } else {
           setScanning(false);
-          setError('Face lost or mismatch during verification.');
+          setError('Verification lost. Keep face centered.');
           startFaceDetection();
         }
       } catch (err) { executeAttendanceSubmit(); }
-    }, 1500);
+    }, 1200);
   };
 
   const executeAttendanceSubmit = async () => {
@@ -410,7 +416,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
         setScanning(false);
       }
     } catch (err) {
-      setError('An unexpected error occurred. Please try again.');
+      setError('Connection failed. Please check your internet.');
       setShowCamera(false);
       setScanning(false);
     } finally { setLoading(false); }
@@ -459,13 +465,13 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
           {showCamera ? (
             <div className="flex flex-col items-center animate-fade-in-up">
               <div className="flex justify-between w-full mb-4 items-center">
-                <h2 className="text-white font-bold text-lg flex items-center gap-2"><Camera size={20} className="text-blue-400" />Live Face Verify</h2>
+                <h2 className="text-white font-bold text-lg flex items-center gap-2"><Camera size={20} className="text-blue-400" />High-Precision Scan</h2>
                 <button onClick={stopCamera} className="text-slate-400 hover:text-red-400 transition"><XCircle size={24} /></button>
               </div>
 
               <div className={`w-full mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all duration-300 ${matchedProfile ? 'bg-green-500/10 border border-green-500/30 text-green-400' : faceDetected ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400' : 'bg-blue-500/10 border border-blue-500/30 text-blue-400'}`}>
                 {matchedProfile ? <UserCheck size={14} /> : faceDetected ? <ShieldCheck size={14} /> : <ShieldOff size={14} className="animate-pulse" />}
-                <span className="flex-1 text-[10px] sm:text-xs">{detectionStatus}</span>
+                <span className="flex-1 text-[10px] sm:text-xs font-bold">{detectionStatus}</span>
                 {faceDetected && <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-white">{faceConfidence}%</span>}
               </div>
 
@@ -479,46 +485,54 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
               {matchedProfile && (
                 <div className="w-full mb-4 bg-green-500/10 border border-green-500/20 rounded-xl p-4 animate-fade-in-up flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-400 font-bold">{matchedProfile.name.charAt(0).toUpperCase()}</div>
-                  <div className="flex-1"><p className="text-green-200 text-[9px] font-bold uppercase tracking-widest">Identity Matched</p><p className="text-white font-bold leading-tight">{matchedProfile.name}</p><p className="text-green-300/70 text-xs">{matchedProfile.division}</p></div>
+                  <div className="flex-1">
+                    <p className="text-green-200 text-[9px] font-bold uppercase tracking-widest">Profile Matched</p>
+                    <p className="text-white font-bold leading-tight">{matchedProfile.name}</p>
+                    <p className="text-green-300/70 text-xs">{matchedProfile.division}</p>
+                  </div>
                 </div>
               )}
 
               {faceDetected && !matchedProfile && matchAttempted && (
                 <div className="w-full mb-4 bg-red-500/10 border border-red-500/20 rounded-xl p-4 animate-fade-in-up">
                   <p className="text-red-400 text-xs font-bold mb-2 flex items-center gap-2"><AlertOctagon size={14} /> IDENTITY UNKNOWN</p>
-                  <p className="text-slate-400 text-xs mb-3">Your face is not registered in our database. You cannot attend this meeting without a valid face profile.</p>
-                  <a href="/register" className="flex items-center justify-center gap-2 w-full py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-xs font-bold transition-colors">
-                    <UserPlus size={14} /> Register Face Now
+                  <p className="text-slate-400 text-xs mb-3 font-medium">This face is not in our record. Please register your profile first.</p>
+                  <a href="/register" className="flex items-center justify-center gap-2 w-full py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-xs font-bold transition-all shadow-lg active:scale-95">
+                    <UserPlus size={14} /> Register Face
                   </a>
                 </div>
               )}
 
               <div className="relative w-full aspect-square rounded-2xl overflow-hidden bg-black mb-4 ring-2 ring-blue-500/50 shadow-2xl">
                 <video ref={videoRef} autoPlay playsInline muted className={`w-full h-full object-cover -scale-x-100 ${scanning ? 'filter sepia-[0.3] contrast-[1.5]' : ''}`} />
-                {faceBox && !scanning && <div className="absolute border-2 rounded-lg pointer-events-none z-20 border-green-400" style={{ left: `${faceBox.x}px`, top: `${faceBox.y}px`, width: `${faceBox.width}px`, height: `${faceBox.height}px` }} />}
+                {faceBox && !scanning && <div className="absolute border-2 rounded-lg pointer-events-none z-20 border-green-400/70 shadow-[0_0_15px_rgba(74,222,128,0.3)]" style={{ left: `${faceBox.x}px`, top: `${faceBox.y}px`, width: `${faceBox.width}px`, height: `${faceBox.height}px` }} />}
                 {scanning && <div className="absolute top-0 left-0 w-full h-2 bg-green-400/80 animate-scan-line z-20 shadow-[0_0_20px_#4ade80]"></div>}
-                {!scanning && !faceBox && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="w-48 h-56 border-2 border-dashed border-white/40 rounded-[40%]"></div></div>}
+                {!scanning && !faceBox && <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40"><div className="w-56 h-72 border-2 border-dashed border-white rounded-[100px]"></div></div>}
               </div>
 
-              <button onClick={handleScan} disabled={scanning || !canAuthenticate()} className={`w-full font-bold py-4 rounded-xl shadow-lg transition-all ${canAuthenticate() && !scanning ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white' : 'bg-slate-700/50 text-slate-500 cursor-not-allowed'}`}>
-                {scanning ? 'Verifying Identity...' : canAuthenticate() ? 'Authenticate' : !matchedProfile && matchAttempted ? 'Registration Required' : 'Waiting for Face...'}
+              {error && <div className="w-full mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2 text-red-400 text-xs font-medium animate-pulse"><AlertOctagon size={14} /> {error}</div>}
+
+              <button onClick={handleScan} disabled={scanning || !canAuthenticate()} className={`w-full font-bold py-4 rounded-xl shadow-lg transition-all ${canAuthenticate() && !scanning ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:brightness-110 active:scale-95' : 'bg-slate-700/50 text-slate-500 cursor-not-allowed'}`}>
+                {scanning ? 'Finalizing...' : canAuthenticate() ? 'Authenticate Now' : !matchedProfile && matchAttempted ? 'Registration Required' : 'Stabilize Your Face'}
               </button>
             </div>
           ) : (
             <div className="text-center">
-              <div className="inline-block p-3 rounded-full bg-blue-500/20 mb-4"><ScanLine className="text-blue-400 w-8 h-8" /></div>
-              <h1 className="text-3xl font-bold text-white">CSSA Presence</h1>
-              <p className="text-sm text-blue-200/60 mt-2 mb-6">Verify your identity with Face AI.</p>
+              <div className="inline-block p-4 rounded-full bg-blue-500/10 mb-6 border border-blue-500/20"><ScanLine className="text-blue-400 w-10 h-10" /></div>
+              <h1 className="text-3xl font-bold text-white tracking-tight">CSSA Presence</h1>
+              <p className="text-sm text-blue-200/60 mt-2 mb-8">High-Precision Identification System v2.0</p>
               
-              <div className="bg-blue-500/5 border border-blue-500/10 rounded-xl p-4 mb-6 text-xs text-blue-200/80 leading-relaxed">
-                {faceProfiles.length > 0 ? "📸 Face recognition is active. AI will identify you automatically." : "⚠️ No faces registered. Please register first."}
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-8 text-xs text-blue-100/70 leading-relaxed text-left space-y-2">
+                <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Ensure good lighting</p>
+                <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Look directly at the camera</p>
+                <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Blink when prompted for liveness</p>
               </div>
 
-              <button onClick={startCamera} disabled={!modelsLoaded} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50">
-                {modelsLoaded ? "Open Camera & Identify" : "Loading Face AI..."}
+              <button onClick={startCamera} disabled={!modelsLoaded} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-5 rounded-2xl shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 border border-white/10">
+                {modelsLoaded ? "Secure Identification" : "Initializing AI..."}
               </button>
               
-              <p className="text-slate-600 text-xs mt-4">New here? <a href="/register" className="text-violet-400 underline font-bold">Register your face profile</a></p>
+              <p className="text-slate-600 text-xs mt-6">First time? <a href="/register" className="text-blue-400 font-bold hover:underline">Register your face</a></p>
             </div>
           )}
         </div>

@@ -12,7 +12,7 @@ const DIVISIONS = [
 const CAPTURE_COUNT = 5;  // Number of face captures for reliable descriptor
 const CAPTURE_INTERVAL_MS = 600; // Time between captures
 const FACE_SCORE_THRESHOLD = 0.5;
-const FACE_MATCH_THRESHOLD = 0.50; // Stricter for duplicate detection
+const FACE_MATCH_THRESHOLD = 0.45; // High accuracy threshold
 
 type FaceProfile = {
   id: string;
