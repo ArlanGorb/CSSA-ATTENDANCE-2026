@@ -92,18 +92,28 @@ export async function POST(request: Request) {
       try {
         const base64Data = photo.split(',')[1];
         const buffer = Buffer.from(base64Data, 'base64');
-        const fileName = `${meetingId}/${name.replace(/\s+/g, '_')}_${Date.now()}.jpg`;
+        const fileName = `${meetingId}/${name.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.jpg`;
+        
+        console.log(`[Photo] Attempting upload: ${fileName} (${buffer.length} bytes)`);
+        
         const { error: uploadError } = await supabase.storage
           .from('attendance-photos')
-          .upload(fileName, buffer, { contentType: 'image/jpeg', upsert: false });
-        if (!uploadError) {
+          .upload(fileName, buffer, { 
+            contentType: 'image/jpeg', 
+            upsert: true // Changed to true to prevent conflict errors
+          });
+
+        if (uploadError) {
+          console.error('[Photo] Upload Error:', uploadError.message, uploadError);
+        } else {
           const { data: urlData } = supabase.storage
             .from('attendance-photos')
             .getPublicUrl(fileName);
           photo_url = urlData?.publicUrl || null;
+          console.log('[Photo] Upload Success:', photo_url);
         }
       } catch (photoErr: any) {
-        console.warn('[Photo] Error:', photoErr.message);
+        console.error('[Photo] Processing Error:', photoErr.message);
       }
     }
 

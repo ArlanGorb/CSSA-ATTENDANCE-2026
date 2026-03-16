@@ -350,12 +350,20 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
     if (detectionLoop.current) clearInterval(detectionLoop.current);
 
     setTimeout(() => {
+      // Final snap just before submit for better accuracy
+      if (videoRef.current) photoRef.current = captureSnapshot(videoRef.current);
       executeAttendanceSubmit();
     }, 800);
   };
 
   const executeAttendanceSubmit = async () => {
     if (!matchedProfile) return;
+    
+    // Safety triple-check capture before camera stops
+    if (videoRef.current && !photoRef.current) {
+      photoRef.current = captureSnapshot(videoRef.current);
+    }
+    
     stopCamera();
     setLoading(true);
     setError(null);
