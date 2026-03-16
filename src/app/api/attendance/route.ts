@@ -2,10 +2,23 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { differenceInMinutes, parseISO, set } from 'date-fns';
 
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // meters
+  const p1 = lat1 * Math.PI / 180;
+  const p2 = lat2 * Math.PI / 180;
+  const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+  const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+            Math.cos(p1) * Math.cos(p2) *
+            Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { meetingId, token, name, division, deviceId } = body;
+    const { meetingId, token, name, division, deviceId, photo, userLat, userLng } = body;
 
     // 1. Verify Meeting & Token
     const { data: meeting, error: meetingError } = await supabase
@@ -26,6 +39,27 @@ export async function POST(request: Request) {
     // Check token expiry
     if (new Date() > new Date(meeting.qr_expiry)) {
       return NextResponse.json({ error: 'QR Code expired. Refresh and scan again.' }, { status: 400 });
+    }
+
+    // 1.5. Verify GPS (Server-side)
+    if (meeting.latitude && meeting.longitude) {
+      if (!userLat || !userLng) {
+        return NextResponse.json({ error: 'Location access is required for this meeting.' }, { status: 400 });
+      }
+
+      const distance = getDistance(userLat, userLng, meeting.latitude, meeting.longitude);
+      if (distance > (meeting.radius_meters || 100)) {
+        // Log GPS Spoofing attempt
+        await supabase.from('security_logs').insert([{
+           meeting_id: meetingId,
+           name: name,
+           division: division,
+           device_id: deviceId,
+           threat_level: 'HIGH',
+           threat_type: 'GPS_SPOOFING'
+        }]);
+        return NextResponse.json({ error: `SECURITY ALERT: You are outside the allowed area (${Math.round(distance)}m away).` }, { status: 403 });
+      }
     }
 
     // 2. Check if user already attended (case-insensitive)
@@ -119,15 +153,41 @@ export async function POST(request: Request) {
        }
     }
 
-    // 4. Insert Record
-    const { error: insertError } = await supabase.from('attendance').insert([{  
+    // 4. Upload photo if provided
+    let photo_url: string | null = null;
+    if (photo && typeof photo === 'string' && photo.startsWith('data:image')) {
+      try {
+        const base64Data = photo.split(',')[1];
+        const buffer = Buffer.from(base64Data, 'base64');
+        const fileName = `${meetingId}/${name.replace(/\s+/g, '_')}_${Date.now()}.jpg`;
+        const { error: uploadError } = await supabase.storage
+          .from('attendance-photos')
+          .upload(fileName, buffer, { contentType: 'image/jpeg', upsert: false });
+        if (!uploadError) {
+          const { data: urlData } = supabase.storage
+            .from('attendance-photos')
+            .getPublicUrl(fileName);
+          photo_url = urlData?.publicUrl || null;
+        } else {
+          console.warn('[Photo] Upload failed:', uploadError.message);
+        }
+      } catch (photoErr: any) {
+        console.warn('[Photo] Error:', photoErr.message);
+      }
+    }
+
+    // 5. Insert Record
+    const insertData: Record<string, any> = {
       meeting_id: meetingId,
       name,
       division,
       status,
       device_id: deviceId,
-      is_suspicious
-    }]);
+      is_suspicious,
+    };
+    if (photo_url) insertData.photo_url = photo_url;
+
+    const { error: insertError } = await supabase.from('attendance').insert([insertData]);
 
     if (insertError) throw insertError;
 
