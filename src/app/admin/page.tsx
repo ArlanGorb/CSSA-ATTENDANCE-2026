@@ -7,6 +7,8 @@ import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangl
 
 
 import { format } from 'date-fns';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const DIVISIONS = [
   "Officer", "Kerohanian", "Mulmed", "Senat Angkatan", 
@@ -239,6 +241,61 @@ export default function AdminDashboard() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleExportPDF = () => {
+    if (!selectedMeeting || attendances.length === 0) return;
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    
+    // Header
+    doc.setFontSize(18);
+    doc.text('REKAPITULASI KEHADIRAN CSSA', pageWidth / 2, 20, { align: 'center' });
+    
+    doc.setFontSize(12);
+    doc.text(`Sesi: ${selectedMeeting.title}`, 14, 35);
+    doc.text(`Tanggal: ${format(new Date(selectedMeeting.created_at), 'dd MMMM yyyy')}`, 14, 42);
+    doc.text(`Dicetak pada: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 49);
+
+    // Table
+    const tableData = attendances.map((a, i) => [
+      i + 1,
+      a.name,
+      a.division,
+      format(new Date(a.timestamp), 'HH:mm'),
+      a.status
+    ]);
+
+    autoTable(doc, {
+      startY: 55,
+      head: [['No', 'Nama Lengkap', 'Divisi', 'Waktu', 'Status']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 10, cellPadding: 3 },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 'auto' },
+        2: { cellWidth: 40 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 20 },
+      }
+    });
+
+    // Summary
+    const finalY = (doc as any).lastAutoTable.finalY || 150;
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Ringkasan Kehadiran:', 14, finalY + 15);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Hadir: ${stats.hadir}`, 14, finalY + 22);
+    doc.text(`Late: ${stats.late}`, 14, finalY + 29);
+    doc.text(`Sakit/Izin: ${stats.izin + stats.sakit}`, 14, finalY + 36);
+    doc.text(`Total Peserta: ${stats.total}`, 14, finalY + 43);
+
+    doc.save(`Recap_${selectedMeeting.title}_${format(new Date(), 'yyyyMMdd')}.pdf`);
   };
 
   const updateStatus = async (attendanceId: string, newStatus: string) => {
@@ -637,9 +694,14 @@ export default function AdminDashboard() {
 
                             </div>
                          </div>
-                         <button onClick={handleExportCSV} className="flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm">
-                            <Download size={16} /> Export CSV
-                         </button>
+                          <div className="flex gap-2">
+                             <button onClick={handleExportCSV} className="flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold transition-all shadow-sm">
+                                <Download size={14} /> CSV
+                             </button>
+                             <button onClick={handleExportPDF} className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all shadow-sm">
+                                <Download size={14} /> PDF
+                             </button>
+                          </div>
                       </div>
 
                       <div className="p-4 md:p-6 space-y-6">
