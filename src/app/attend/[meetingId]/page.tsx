@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { useSearchParams } from 'next/navigation';
 import { CheckCircle, AlertOctagon, ScanLine, Camera, XCircle, ShieldCheck, ShieldOff, UserCheck, UserX, Loader2, Eye, EyeOff, MapPin, Navigation } from 'lucide-react';
 import fpPromise from '@fingerprintjs/fingerprintjs';
@@ -13,6 +14,8 @@ const DIVISIONS = [
 
 // Face Detection Configuration
 const FACE_DETECTION_INTERVAL_MS = 300;
+const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false });
+
 const FACE_SCORE_THRESHOLD = 0.5;
 const FACE_CONFIRM_FRAMES = 5;
 const FACE_MIN_SIZE_RATIO = 0.08;
@@ -745,17 +748,36 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
                  <Navigation size={12} />}
                 
                 <span className="flex-1">
-                  {locationStatus === 'checking' ? 'Verifying Location...' :
-                   locationStatus === 'verified' ? 'Location Confirmed' :
-                   locationStatus === 'out_of_range' ? `Out of Range (${distanceToMeeting}m)` :
-                   locationStatus === 'denied' ? 'GPS Access Denied' : 
-                   !meetingLocation ? 'GPS Protection Disabled' : 'Location Required'}
+                  {locationStatus === 'checking' ? 'Memverifikasi Lokasi...' :
+                   locationStatus === 'verified' ? 'Lokasi Terverifikasi' :
+                   locationStatus === 'out_of_range' ? 'Di Luar Area' :
+                   locationStatus === 'denied' ? 'Akses Lokasi Ditolak' : 
+                   !meetingLocation ? 'GPS Protection Disabled' : 'Lokasi Diperlukan'}
+                  {distanceToMeeting !== null && (
+                    <span className="block text-[10px] opacity-60 mt-0.5">
+                      Jarak: {Math.round(distanceToMeeting)}m (Batas: {meetingLocation?.radius}m)
+                    </span>
+                  )}
                 </span>
-
-                {locationStatus === 'denied' && (
-                  <button onClick={requestLocation} className="underline decoration-dotted">Retry</button>
-                )}
+                <button onClick={requestLocation} className="underline decoration-dotted text-[10px] uppercase font-bold bg-white/10 px-2 py-1 rounded">Retry</button>
               </div>
+
+              {/* Visual Map Preview for Students */}
+              {meetingLocation && (
+                <div className="w-full mb-4 h-32 rounded-xl overflow-hidden border border-white/10 relative shadow-inner">
+                  <MapPicker 
+                    lat={userLocation?.lat || meetingLocation.lat} 
+                    lng={userLocation?.lng || meetingLocation.lng} 
+                    radius={meetingLocation.radius}
+                    onChange={() => {}} 
+                  />
+                  {!userLocation && (
+                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] z-[1001] flex items-center justify-center text-[10px] font-bold text-white tracking-widest p-4 text-center">
+                      WAITING FOR GPS...
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* AI Status Bar */}
               <div className={`w-full mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all duration-300 ${
