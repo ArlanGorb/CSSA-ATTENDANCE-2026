@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       .not('face_descriptor', 'is', null);
 
     if (allProfiles && allProfiles.length > 0) {
-      const threshold = 0.5; // Strict threshold for duplicate detection
+      const threshold = 0.40; // Strict threshold for duplicate detection
       
       const duplicate = allProfiles.find(p => {
         // Skip if it's the same name (updating their own profile)

@@ -16,7 +16,7 @@ const FACE_DETECTION_INTERVAL_MS = 300;
 const FACE_SCORE_THRESHOLD = 0.6; // Higher threshold for detection confidence
 const FACE_CONFIRM_FRAMES = 10; // More frames for stability (approx 3 seconds)
 const FACE_MIN_SIZE_RATIO = 0.12; // Face must be larger/closer (at least 12% of screen)
-const FACE_MATCH_THRESHOLD = 0.45; // Stricter = Higher Accuracy
+const FACE_MATCH_THRESHOLD = 0.48; // Balanced for recognition reliability
 
 // Liveness Detection (Mouth Open)
 const MAR_THRESHOLD = 0.5; // Mouth Aspect Ratio above this = mouth open
