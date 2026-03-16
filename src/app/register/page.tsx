@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Camera, XCircle, CheckCircle, AlertOctagon, ScanLine, ShieldCheck, ShieldOff, UserPlus, Loader2, ArrowLeft, Sparkles } from 'lucide-react';
+import { Camera, XCircle, CheckCircle, AlertOctagon, ScanLine, ShieldCheck, ShieldOff, UserPlus, Loader2, ArrowLeft, Sparkles, ExternalLink } from 'lucide-react';
 import * as faceapi from 'face-api.js';
 import Link from 'next/link';
 
@@ -271,7 +271,7 @@ export default function RegisterFace() {
             const match = matcher.findBestMatch(detection.descriptor);
             if (match.label !== 'unknown' && !match.label.startsWith(name.trim())) {
               const [dName, dDiv] = match.label.split('|||');
-              setError(`WAJAH SUDAH TERDAFTAR: Wajah ini terdeteksi milik "${dName}" (${dDiv}). Satu orang hanya boleh memiliki satu profil.`);
+              setDuplicateFound({ name: dName, division: dDiv });
               setCapturing(false);
               startFaceDetection();
               return;
@@ -345,7 +345,11 @@ export default function RegisterFace() {
         );
         stopCamera();
       } else {
-        setError(data.error || 'Gagal menyimpan profil wajah.');
+        if (data.isDuplicate && data.name) {
+          setDuplicateFound({ name: data.name, division: data.division });
+        } else {
+          setError(data.error || 'Gagal menyimpan profil wajah.');
+        }
         setCapturing(false);
         startFaceDetection();
       }
@@ -544,17 +548,38 @@ export default function RegisterFace() {
                   ></div>
                 )}
 
-                {/* Duplicate Found Warning */}
+                {/* Duplicate Found - Verification Success Style */}
                 {duplicateFound && !capturing && (
-                  <div className="w-full mb-4 bg-red-500/10 border border-red-500/20 rounded-xl p-4 animate-[fadeIn_0.3s_ease-out]">
-                    <div className="flex items-center gap-2 mb-2">
-                       <AlertOctagon size={16} className="text-red-400" />
-                       <p className="text-red-300 text-xs font-bold">WAJAH SUDAH TERDAFTAR</p>
+                  <div className="absolute inset-0 z-40 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-fade-in-up">
+                    <div className="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mb-4 border border-blue-500/30">
+                      <ShieldCheck size={40} className="text-blue-400" />
                     </div>
-                    <p className="text-slate-300 text-xs leading-relaxed">
-                       Wajah ini sudah terdaftar atas nama <strong className="text-white">{duplicateFound.name}</strong> ({duplicateFound.division}). 
-                       Tidak diperbolehkan mendaftar lebih dari satu profil.
+                    <h3 className="text-xl font-bold text-white mb-2">Profil Ditemukan!</h3>
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6 w-full">
+                      <p className="text-slate-400 text-[10px] uppercase font-bold tracking-widest mb-1">Identitas Terverifikasi</p>
+                      <p className="text-white font-bold text-lg">{duplicateFound.name}</p>
+                      <p className="text-blue-400 text-sm font-medium">{duplicateFound.division}</p>
+                    </div>
+                    <p className="text-slate-400 text-xs mb-8 leading-relaxed">
+                      Wajah Anda sudah terdaftar di sistem. Anda tidak perlu mendaftar ulang dan bisa langsung melakukan absensi.
                     </p>
+                    <div className="flex flex-col gap-3 w-full">
+                      <Link 
+                        href="/" 
+                        className="flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg active:scale-95"
+                      >
+                        <ExternalLink size={18} /> Lanjut ke Presensi
+                      </Link>
+                      <button 
+                        onClick={() => {
+                          setDuplicateFound(null);
+                          setDetectionStatus('Mencoba lagi...');
+                        }}
+                        className="text-slate-500 text-xs hover:text-slate-300 transition"
+                      >
+                        Bukan saya? Coba scan ulang
+                      </button>
+                    </div>
                   </div>
                 )}
 

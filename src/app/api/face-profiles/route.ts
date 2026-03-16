@@ -64,8 +64,10 @@ export async function POST(request: Request) {
 
       if (duplicate) {
         return NextResponse.json({ 
-          error: `WAJAH SUDAH TERDAFTAR: Wajah ini terdeteksi milik "${duplicate.name}" (${duplicate.division}). Satu orang hanya boleh memiliki satu profil.`,
-          isDuplicate: true
+          error: `WAJAH SUDAH TERDAFTAR: Wajah ini terdeteksi milik "${duplicate.name}" (${duplicate.division}).`,
+          isDuplicate: true,
+          name: duplicate.name,
+          division: duplicate.division
         }, { status: 400 });
       }
     }
