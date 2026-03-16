@@ -12,6 +12,14 @@ const DIVISIONS = [
 const CAPTURE_COUNT = 5;  // Number of face captures for reliable descriptor
 const CAPTURE_INTERVAL_MS = 600; // Time between captures
 const FACE_SCORE_THRESHOLD = 0.5;
+const FACE_MATCH_THRESHOLD = 0.55;
+
+type FaceProfile = {
+  id: string;
+  name: string;
+  division: string;
+  face_descriptor: number[];
+};
 
 export default function RegisterFace() {
   const [modelsLoaded, setModelsLoaded] = useState(false);
@@ -39,6 +47,11 @@ export default function RegisterFace() {
   const [error, setError] = useState<string | null>(null);
   const [resultMessage, setResultMessage] = useState('');
 
+  // Duplicate detection states
+  const [faceProfiles, setFaceProfiles] = useState<FaceProfile[]>([]);
+  const [duplicateFound, setDuplicateFound] = useState<{ name: string; division: string } | null>(null);
+  const labeledDescriptors = useRef<faceapi.LabeledFaceDescriptors[]>([]);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectionLoop = useRef<NodeJS.Timeout | null>(null);
@@ -63,7 +76,29 @@ export default function RegisterFace() {
       }
     };
     loadModels();
+    fetchProfiles();
   }, []);
+
+  const fetchProfiles = async () => {
+    try {
+      const res = await fetch('/api/face-profiles');
+      const data = await res.json();
+      if (data.profiles && data.profiles.length > 0) {
+        setFaceProfiles(data.profiles);
+        const labeled = data.profiles
+          .filter((p: FaceProfile) => p.face_descriptor && p.face_descriptor.length === 128)
+          .map((p: FaceProfile) => {
+            return new faceapi.LabeledFaceDescriptors(
+              `${p.name}|||${p.division}`,
+              [new Float32Array(p.face_descriptor)]
+            );
+          });
+        labeledDescriptors.current = labeled;
+      }
+    } catch (err) {
+      console.error('[FaceAPI] Failed to fetch profiles for duplicate check:', err);
+    }
+  };
 
   // Cleanup
   useEffect(() => {
@@ -131,24 +166,41 @@ export default function RegisterFace() {
       if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) return;
 
       try {
-        const detections = await faceapi.detectAllFaces(
-          videoRef.current,
-          new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: FACE_SCORE_THRESHOLD })
-        );
+        // We use full detection (landmarks + descriptor) for duplicate check
+        const detection = await faceapi
+          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: FACE_SCORE_THRESHOLD }))
+          .withFaceLandmarks()
+          .withFaceDescriptor();
 
-        if (detections.length === 1) {
-          const best = detections[0];
+        if (detection) {
           const videoWidth = videoRef.current.videoWidth;
           const videoHeight = videoRef.current.videoHeight;
-          const faceArea = (best.box.width * best.box.height) / (videoWidth * videoHeight);
+          const faceArea = (detection.detection.box.width * detection.detection.box.height) / (videoWidth * videoHeight);
 
           if (faceArea < 0.08) {
             setDetectionStatus('Move closer to camera');
             setFaceBox(null);
             faceConfirmCount.current = Math.max(0, faceConfirmCount.current - 1);
+            setDuplicateFound(null);
           } else {
+            // DUPLICATE FACE CHECK
+            if (labeledDescriptors.current.length > 0) {
+              const matcher = new faceapi.FaceMatcher(labeledDescriptors.current, FACE_MATCH_THRESHOLD);
+              const bestMatch = matcher.findBestMatch(detection.descriptor);
+              
+              if (bestMatch.label !== 'unknown') {
+                const [dName, dDiv] = bestMatch.label.split('|||');
+                // Only flag if it's NOT the same person being updated (optional logic)
+                // For safety, we block any existing face from registering a new name
+                setDuplicateFound({ name: dName, division: dDiv });
+                setDetectionStatus('FACE ALREADY REGISTERED');
+              } else {
+                setDuplicateFound(null);
+              }
+            }
+
             faceConfirmCount.current++;
-            setFaceConfidence(Math.round(best.score * 100));
+            setFaceConfidence(Math.round(detection.detection.score * 100));
 
             const displayWidth = videoRef.current.clientWidth;
             const displayHeight = videoRef.current.clientHeight;
@@ -156,27 +208,25 @@ export default function RegisterFace() {
             const scaleY = displayHeight / videoHeight;
 
             setFaceBox({
-              x: displayWidth - (best.box.x * scaleX) - (best.box.width * scaleX),
-              y: best.box.y * scaleY,
-              width: best.box.width * scaleX,
-              height: best.box.height * scaleY,
+              x: displayWidth - (detection.detection.box.x * scaleX) - (detection.detection.box.width * scaleX),
+              y: detection.detection.box.y * scaleY,
+              width: detection.detection.box.width * scaleX,
+              height: detection.detection.box.height * scaleY,
             });
 
             if (faceConfirmCount.current >= 5) {
               setFaceDetected(true);
-              setDetectionStatus('Face locked — ready to capture');
+              if (!duplicateFound) {
+                setDetectionStatus('Face locked — ready to capture');
+              }
             } else {
               setDetectionStatus(`Verifying face... (${faceConfirmCount.current}/5)`);
             }
           }
-        } else if (detections.length > 1) {
-          setDetectionStatus('Multiple faces — only 1 person allowed');
-          setFaceDetected(false);
-          setFaceBox(null);
-          faceConfirmCount.current = 0;
         } else {
           faceConfirmCount.current = Math.max(0, faceConfirmCount.current - 1);
           setFaceBox(null);
+          setDuplicateFound(null);
           if (faceConfirmCount.current === 0) {
             setFaceDetected(false);
             setDetectionStatus('No face detected — look at camera');
@@ -186,7 +236,7 @@ export default function RegisterFace() {
         console.error('[FaceAPI] Detection error:', err);
       }
     }, 300);
-  }, [modelsLoaded]);
+  }, [modelsLoaded, duplicateFound]);
 
   // Capture multiple face descriptors
   const handleCapture = async () => {
@@ -405,9 +455,11 @@ export default function RegisterFace() {
               <div className={`w-full mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all duration-300 ${
                 capturing
                   ? 'bg-violet-500/10 border border-violet-500/30 text-violet-400'
-                  : faceDetected
-                    ? 'bg-green-500/10 border border-green-500/30 text-green-400'
-                    : 'bg-blue-500/10 border border-blue-500/30 text-blue-400'
+                  : duplicateFound
+                    ? 'bg-red-500/10 border border-red-500/30 text-red-400 animate-pulse'
+                    : faceDetected
+                      ? 'bg-green-500/10 border border-green-500/30 text-green-400'
+                      : 'bg-blue-500/10 border border-blue-500/30 text-blue-400'
               }`}>
                 {capturing ? (
                   <Loader2 size={14} className="shrink-0 animate-spin" />
@@ -480,6 +532,20 @@ export default function RegisterFace() {
                   ></div>
                 )}
 
+                {/* Duplicate Found Warning */}
+                {duplicateFound && !capturing && (
+                  <div className="w-full mb-4 bg-red-500/10 border border-red-500/20 rounded-xl p-4 animate-[fadeIn_0.3s_ease-out]">
+                    <div className="flex items-center gap-2 mb-2">
+                       <AlertOctagon size={16} className="text-red-400" />
+                       <p className="text-red-300 text-xs font-bold">WAJAH SUDAH TERDAFTAR</p>
+                    </div>
+                    <p className="text-slate-300 text-xs leading-relaxed">
+                       Wajah ini sudah terdaftar atas nama <strong className="text-white">{duplicateFound.name}</strong> ({duplicateFound.division}). 
+                       Tidak diperbolehkan mendaftar lebih dari satu profil.
+                    </p>
+                  </div>
+                )}
+
                 {/* Guide overlay when no face */}
                 {!faceBox && !capturing && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
@@ -514,10 +580,10 @@ export default function RegisterFace() {
               {/* Action Button */}
               <button
                 onClick={handleCapture}
-                disabled={!faceDetected || capturing || submitting}
+                disabled={!faceDetected || capturing || submitting || !!duplicateFound}
                 type="button"
                 className={`w-full font-bold py-4 rounded-xl shadow-lg transition-all transform active:scale-[0.98] flex justify-center items-center gap-2 ${
-                  faceDetected && !capturing
+                  faceDetected && !capturing && !duplicateFound
                     ? 'bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-400 hover:to-purple-500 text-white shadow-violet-500/20 hover:scale-[1.02]'
                     : 'bg-slate-700/50 text-slate-500 cursor-not-allowed border border-slate-600/30'
                 }`}
