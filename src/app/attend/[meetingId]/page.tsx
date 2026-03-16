@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { CheckCircle, AlertOctagon, ScanLine, Camera, XCircle, ShieldCheck, ShieldOff, UserCheck, UserX, Loader2, Eye, EyeOff } from 'lucide-react';
+import { CheckCircle, AlertOctagon, ScanLine, Camera, XCircle, ShieldCheck, ShieldOff, UserCheck, UserX, Loader2, Eye, EyeOff, UserPlus } from 'lucide-react';
 import fpPromise from '@fingerprintjs/fingerprintjs';
 import * as faceapi from 'face-api.js';
 import { supabase } from '@/lib/supabase';
@@ -16,7 +16,7 @@ const FACE_DETECTION_INTERVAL_MS = 300;
 const FACE_SCORE_THRESHOLD = 0.5;
 const FACE_CONFIRM_FRAMES = 5;
 const FACE_MIN_SIZE_RATIO = 0.08;
-const FACE_MATCH_THRESHOLD = 0.55;
+const FACE_MATCH_THRESHOLD = 0.50; // Stricter threshold
 
 // Liveness Detection (Blink)
 const EAR_THRESHOLD = 0.22; // Eye Aspect Ratio below this = eye closed
@@ -85,12 +85,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   const [profilesLoaded, setProfilesLoaded] = useState(false);
   const [matchedProfile, setMatchedProfile] = useState<{ name: string; division: string; distance: number } | null>(null);
   const [matchAttempted, setMatchAttempted] = useState(false);
-  const [recognitionMode, setRecognitionMode] = useState<'auto' | 'manual'>('auto'); // auto = face recognition, manual = type name
   const labeledDescriptors = useRef<faceapi.LabeledFaceDescriptors[]>([]);
-
-  // Manual fallback form
-  const [manualName, setManualName] = useState('');
-  const [manualDivision, setManualDivision] = useState('');
 
   // Liveness (Blink Detection) States
   const [blinkCount, setBlinkCount] = useState(0);
@@ -271,7 +266,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
               } else if (labeledDescriptors.current.length === 0) {
                 setDetectionStatus('Face verified ✓ (no profiles)');
               } else if (!matchedProfile && matchAttempted) {
-                setDetectionStatus('Face detected — identity unknown');
+                setDetectionStatus('IDENTITY UNKNOWN — REGISTER REQUIRED');
               } else {
                 setDetectionStatus('Identifying face...');
               }
@@ -299,7 +294,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
         }
       } catch (err) { console.error(err); }
     }, FACE_DETECTION_INTERVAL_MS);
-  }, [modelsLoaded, matchedProfile, matchAttempted, recognitionMode, manualName, manualDivision, livenessVerified]);
+  }, [modelsLoaded, matchedProfile, matchAttempted, livenessVerified]);
 
   const startCamera = async () => {
     try {
@@ -344,19 +339,12 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   };
 
   const canAuthenticate = () => {
-    if (!faceDetected || !livenessVerified) return false;
-    if (recognitionMode === 'auto') return !!matchedProfile;
-    return manualName.trim() !== '' && manualDivision !== '';
-  };
-
-  const getSubmitData = () => {
-    if (recognitionMode === 'auto' && matchedProfile) return { name: matchedProfile.name, division: matchedProfile.division };
-    return { name: manualName.trim(), division: manualDivision };
+    return !!(faceDetected && livenessVerified && matchedProfile);
   };
 
   const handleScan = () => {
     if (!canAuthenticate()) {
-      setError('Cannot authenticate. Ensure face is recognized and liveness is verified (blink).');
+      setError('Cannot authenticate. Face not registered or identity mismatch.');
       return;
     }
     if (videoRef.current) photoRef.current = captureSnapshot(videoRef.current);
@@ -371,23 +359,21 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
       }
       try {
         const finalCheck = await faceapi.detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: FACE_SCORE_THRESHOLD })).withFaceLandmarks().withFaceDescriptor();
-        if (finalCheck) {
-          if (recognitionMode === 'auto' && matchedProfile && labeledDescriptors.current.length > 0) {
-            const matcher = new faceapi.FaceMatcher(labeledDescriptors.current, FACE_MATCH_THRESHOLD);
-            const finalMatch = matcher.findBestMatch(finalCheck.descriptor);
-            const [finalName] = finalMatch.label.split('|||');
-            if (finalMatch.label === 'unknown' || finalName !== matchedProfile.name) {
-              setScanning(false);
-              setError('Face identity changed. Please look at camera and try again.');
-              startFaceDetection();
-              return;
-            }
+        if (finalCheck && matchedProfile) {
+          const matcher = new faceapi.FaceMatcher(labeledDescriptors.current, FACE_MATCH_THRESHOLD);
+          const finalMatch = matcher.findBestMatch(finalCheck.descriptor);
+          const [finalName] = finalMatch.label.split('|||');
+          if (finalMatch.label === 'unknown' || finalName !== matchedProfile.name) {
+            setScanning(false);
+            setError('Face identity changed or mismatch. Please look at camera.');
+            startFaceDetection();
+            return;
           }
           photoRef.current = captureSnapshot(videoRef.current);
           executeAttendanceSubmit();
         } else {
           setScanning(false);
-          setError('Face lost during verification. Keep your face visible and try again.');
+          setError('Face lost or mismatch during verification.');
           startFaceDetection();
         }
       } catch (err) { executeAttendanceSubmit(); }
@@ -395,10 +381,10 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   };
 
   const executeAttendanceSubmit = async () => {
+    if (!matchedProfile) return;
     stopCamera();
     setLoading(true);
     setError(null);
-    const submitData = getSubmitData();
 
     try {
       const res = await fetch('/api/attendance', {
@@ -407,8 +393,8 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
         body: JSON.stringify({
           meetingId: params.meetingId,
           token,
-          name: submitData.name,
-          division: submitData.division,
+          name: matchedProfile.name,
+          division: matchedProfile.division,
           deviceId: deviceId,
           photo: photoRef.current || undefined,
         })
@@ -462,8 +448,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   if (showBreachAlert) return <div className="fixed inset-0 z-50 bg-red-950 flex flex-col items-center justify-center text-white overflow-hidden text-center"><div className="absolute inset-0 bg-red-600/20 animate-[pulse_0.5s_infinite]"></div><AlertOctagon size={100} className="text-red-500 mb-6 animate-bounce" /><h1 className="text-6xl font-black tracking-widest text-red-500 mb-2 uppercase">SECURITY BREACH</h1><p className="text-xl text-red-300 font-mono tracking-wide uppercase max-w-md bg-black/50 p-4 border border-red-500/50 mt-4 rounded-lg">Multiple check-ins detected <br/> from a single device footprint.</p><div className="mt-12 text-sm text-red-400 font-mono flex items-center gap-2 opacity-70"><span className="w-2 h-2 bg-red-500 rounded-full animate-ping"></span>INCIDENT LOGGED [DEVICE_ID: {deviceId.substring(0,8)}...]</div></div>;
 
   if (status) {
-    const submitData = getSubmitData();
-    return <div className="fixed inset-0 z-50 bg-gradient-to-br from-green-900 via-emerald-900 to-teal-900 flex flex-col items-center justify-center text-white text-center"><CheckCircle size={80} className="text-green-400 mb-8" /><h1 className="text-5xl font-bold mb-4">ACCESS GRANTED</h1><div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl p-6 max-w-xs w-full"><p className="text-2xl font-bold text-white">{status}</p><p className="text-white/60 text-xs mt-2">Verified via Face AI as <span className="text-emerald-300 font-bold">{submitData.name}</span></p></div><p className="mt-12 text-emerald-400/60 text-sm tracking-[0.2em]">You may close this window</p></div>;
+    return <div className="fixed inset-0 z-50 bg-gradient-to-br from-green-900 via-emerald-900 to-teal-900 flex flex-col items-center justify-center text-white text-center"><CheckCircle size={80} className="text-green-400 mb-8" /><h1 className="text-5xl font-bold mb-4">ACCESS GRANTED</h1><div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl p-6 max-w-xs w-full"><p className="text-2xl font-bold text-white">{status}</p><p className="text-white/60 text-xs mt-2">Verified via Face AI as <span className="text-emerald-300 font-bold">{matchedProfile?.name || 'User'}</span></p></div><p className="mt-12 text-emerald-400/60 text-sm tracking-[0.2em]">You may close this window</p></div>;
   }
 
   return (
@@ -498,17 +483,13 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
                 </div>
               )}
 
-              {faceDetected && !matchedProfile && matchAttempted && recognitionMode === 'auto' && (
-                <div className="w-full mb-4 bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 animate-fade-in-up">
-                  <p className="text-amber-300 text-xs font-semibold mb-2">Face not registered</p>
-                  <p className="text-slate-400 text-xs">Enter details <button onClick={() => setRecognitionMode('manual')} className="text-blue-400 underline">manually</button> or <a href="/register" className="text-violet-400 underline">register here</a>.</p>
-                </div>
-              )}
-
-              {recognitionMode === 'manual' && (
-                <div className="w-full mb-4 space-y-3 bg-white/5 border border-white/10 rounded-xl p-4 animate-fade-in-up">
-                  <input value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="Full Name" className="w-full bg-slate-800/50 border border-white/10 text-white p-3 rounded-lg text-sm" />
-                  <select value={manualDivision} onChange={(e) => setManualDivision(e.target.value)} className="w-full bg-slate-800/50 border border-white/10 text-white p-3 rounded-lg text-sm"><option value="">Select Division...</option>{DIVISIONS.map(div => <option key={div} value={div}>{div}</option>)}</select>
+              {faceDetected && !matchedProfile && matchAttempted && (
+                <div className="w-full mb-4 bg-red-500/10 border border-red-500/20 rounded-xl p-4 animate-fade-in-up">
+                  <p className="text-red-400 text-xs font-bold mb-2 flex items-center gap-2"><AlertOctagon size={14} /> IDENTITY UNKNOWN</p>
+                  <p className="text-slate-400 text-xs mb-3">Your face is not registered in our database. You cannot attend this meeting without a valid face profile.</p>
+                  <a href="/register" className="flex items-center justify-center gap-2 w-full py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-xs font-bold transition-colors">
+                    <UserPlus size={14} /> Register Face Now
+                  </a>
                 </div>
               )}
 
@@ -520,7 +501,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
               </div>
 
               <button onClick={handleScan} disabled={scanning || !canAuthenticate()} className={`w-full font-bold py-4 rounded-xl shadow-lg transition-all ${canAuthenticate() && !scanning ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white' : 'bg-slate-700/50 text-slate-500 cursor-not-allowed'}`}>
-                {scanning ? 'Verifying Identity...' : canAuthenticate() ? 'Authenticate' : 'Waiting for Face...'}
+                {scanning ? 'Verifying Identity...' : canAuthenticate() ? 'Authenticate' : !matchedProfile && matchAttempted ? 'Registration Required' : 'Waiting for Face...'}
               </button>
             </div>
           ) : (
@@ -530,14 +511,14 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
               <p className="text-sm text-blue-200/60 mt-2 mb-6">Verify your identity with Face AI.</p>
               
               <div className="bg-blue-500/5 border border-blue-500/10 rounded-xl p-4 mb-6 text-xs text-blue-200/80 leading-relaxed">
-                {faceProfiles.length > 0 ? "📸 Face recognition is active. AI will identify you automatically." : "⚠️ No faces registered. Manual entry required."}
+                {faceProfiles.length > 0 ? "📸 Face recognition is active. AI will identify you automatically." : "⚠️ No faces registered. Please register first."}
               </div>
 
               <button onClick={startCamera} disabled={!modelsLoaded} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50">
                 {modelsLoaded ? "Open Camera & Identify" : "Loading Face AI..."}
               </button>
               
-              <p className="text-slate-600 text-xs mt-4">New here? <a href="/register" className="text-violet-400 underline">Register face</a></p>
+              <p className="text-slate-600 text-xs mt-4">New here? <a href="/register" className="text-violet-400 underline font-bold">Register your face profile</a></p>
             </div>
           )}
         </div>
