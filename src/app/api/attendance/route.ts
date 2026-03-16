@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       }
 
       const distance = getDistance(userLat, userLng, meeting.latitude, meeting.longitude);
-      if (distance > (meeting.radius_meters || 100)) {
+      if (distance > (meeting.radius_meters ?? 100)) {
         // Log GPS Spoofing attempt
         await supabase.from('security_logs').insert([{
            meeting_id: meetingId,

@@ -148,7 +148,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
           setMeetingLocation({
             lat: meeting.latitude,
             lng: meeting.longitude,
-            radius: meeting.radius_meters || 100
+            radius: meeting.radius_meters ?? 100
           });
           console.log('[Supabase] Meeting location loaded:', meeting); // Added console log
         } else {
@@ -162,6 +162,8 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
     };
     init();
   }, [params.meetingId]); // Dependency array updated
+
+
 
   // Request user's geolocation
   const requestLocation = useCallback(() => {
@@ -184,7 +186,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
           setDistanceToMeeting(distance);
           if (distance > meetingLocation.radius) {
             setLocationStatus('out_of_range');
-            setError(`You are ${Math.round(distance)}m away, but the meeting is within ${meetingLocation.radius}m.`);
+            setError(`MAAF: Anda berada di luar area rapat (Jarak: ${Math.round(distance)}m). Admin menyetel radius maksimal ${meetingLocation.radius}m.`);
           } else {
             setLocationStatus('verified');
           }
@@ -202,6 +204,13 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
       }
     );
   }, [meetingLocation]); // Added meetingLocation as dependency
+
+  // Auto-request location once meeting details are loaded
+  useEffect(() => {
+    if (meetingLocation && locationStatus === 'idle') {
+      requestLocation();
+    }
+  }, [meetingLocation, locationStatus, requestLocation]);
 
   // Fetch registered face profiles
   useEffect(() => {
@@ -739,7 +748,8 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
                   {locationStatus === 'checking' ? 'Verifying Location...' :
                    locationStatus === 'verified' ? 'Location Confirmed' :
                    locationStatus === 'out_of_range' ? `Out of Range (${distanceToMeeting}m)` :
-                   locationStatus === 'denied' ? 'GPS Access Denied' : 'Location Required'}
+                   locationStatus === 'denied' ? 'GPS Access Denied' : 
+                   !meetingLocation ? 'GPS Protection Disabled' : 'Location Required'}
                 </span>
 
                 {locationStatus === 'denied' && (
