@@ -89,6 +89,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
 
   // Liveness (Mouth Open) States
   const [livenessVerified, setLivenessVerified] = useState(false);
+  const [photoCaptured, setPhotoCaptured] = useState(false);
 
   // Load face-api.js models on mount
   useEffect(() => {
@@ -340,7 +341,10 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
     if (!canAuthenticate()) return;
     
     // Capture metadata/photo state before finalizing
-    if (videoRef.current) photoRef.current = captureSnapshot(videoRef.current);
+    if (videoRef.current) {
+      photoRef.current = captureSnapshot(videoRef.current);
+      setPhotoCaptured(true);
+    }
     setScanning(true);
     setError(null);
     
@@ -465,6 +469,11 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
                     <p className="text-green-200 text-[9px] font-bold uppercase tracking-widest">Profil Cocok</p>
                     <p className="text-white font-bold leading-tight">{matchedProfile.name}</p>
                     <p className="text-green-300/70 text-xs">{matchedProfile.division}</p>
+                    {photoCaptured && (
+                      <div className="mt-2 flex items-center gap-1.5 text-blue-400 font-bold text-[10px] animate-pulse">
+                        <Camera size={12} /> BUKTI FOTO DIAMBIL!
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

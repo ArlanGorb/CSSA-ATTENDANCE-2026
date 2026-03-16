@@ -88,9 +88,18 @@ export async function POST(request: Request) {
 
     // 4. Upload photo if provided
     let photo_url: string | null = null;
+    
+    if (!photo) {
+      console.warn(`[Photo] Warning: No photo data received for ${name}`);
+    }
+
     if (photo && typeof photo === 'string' && photo.startsWith('data:image')) {
       try {
         const base64Data = photo.split(',')[1];
+        if (!base64Data || base64Data.length < 100) {
+          throw new Error('Invalid base64 image data');
+        }
+
         const buffer = Buffer.from(base64Data, 'base64');
         const fileName = `${meetingId}/${name.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.jpg`;
         
@@ -100,11 +109,12 @@ export async function POST(request: Request) {
           .from('attendance-photos')
           .upload(fileName, buffer, { 
             contentType: 'image/jpeg', 
-            upsert: true // Changed to true to prevent conflict errors
+            upsert: true 
           });
 
         if (uploadError) {
           console.error('[Photo] Upload Error:', uploadError.message, uploadError);
+          // Don't fail the whole attendance if upload fails, but log it
         } else {
           const { data: urlData } = supabase.storage
             .from('attendance-photos')
@@ -125,8 +135,8 @@ export async function POST(request: Request) {
       status,
       device_id: deviceId,
       is_suspicious,
+      photo_url: photo_url // Always include even if null to ensure field is set
     };
-    if (photo_url) insertData.photo_url = photo_url;
 
     const { error: insertError } = await supabase.from('attendance').insert([insertData]);
     if (insertError) throw insertError;
