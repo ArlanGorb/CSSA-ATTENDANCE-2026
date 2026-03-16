@@ -12,7 +12,7 @@ const DIVISIONS = [
 const CAPTURE_COUNT = 5;  // Number of face captures for reliable descriptor
 const CAPTURE_INTERVAL_MS = 600; // Time between captures
 const FACE_SCORE_THRESHOLD = 0.5;
-const FACE_MATCH_THRESHOLD = 0.55;
+const FACE_MATCH_THRESHOLD = 0.50; // Stricter for duplicate detection
 
 type FaceProfile = {
   id: string;
@@ -265,6 +265,19 @@ export default function RegisterFace() {
           .withFaceDescriptor();
 
         if (detection) {
+          // FINAL DUPLICATE CHECK on the first stable capture
+          if (i === 0 && labeledDescriptors.current.length > 0) {
+            const matcher = new faceapi.FaceMatcher(labeledDescriptors.current, FACE_MATCH_THRESHOLD);
+            const match = matcher.findBestMatch(detection.descriptor);
+            if (match.label !== 'unknown' && !match.label.startsWith(name.trim())) {
+              const [dName, dDiv] = match.label.split('|||');
+              setError(`WAJAH SUDAH TERDAFTAR: Wajah ini terdeteksi milik "${dName}" (${dDiv}). Satu orang hanya boleh memiliki satu profil.`);
+              setCapturing(false);
+              startFaceDetection();
+              return;
+            }
+          }
+
           descriptors.push(detection.descriptor);
           setCaptureProgress(i + 1);
         } else {

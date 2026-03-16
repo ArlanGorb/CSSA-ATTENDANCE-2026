@@ -31,13 +31,46 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate face descriptor format (should be array of 128 numbers)
+    // Validate face descriptor format
     if (!Array.isArray(faceDescriptor) || faceDescriptor.length !== 128) {
       return NextResponse.json(
-        { error: 'Invalid face descriptor format. Expected 128-dimensional array.' },
+        { error: 'Invalid face descriptor format.' },
         { status: 400 }
       );
     }
+
+    // 1. BIOMETRIC DUPLICATE CHECK (Server-side)
+    // Fetch all existing profiles to compare descriptors
+    const { data: allProfiles } = await supabase
+      .from('user_profiles')
+      .select('name, division, face_descriptor')
+      .not('face_descriptor', 'is', null);
+
+    if (allProfiles && allProfiles.length > 0) {
+      const threshold = 0.5; // Strict threshold for duplicate detection
+      
+      const duplicate = allProfiles.find(p => {
+        // Skip if it's the same name (updating their own profile)
+        if (p.name.toLowerCase() === name.trim().toLowerCase()) return false;
+        
+        // Calculate Euclidean Distance
+        const dist = Math.sqrt(
+          p.face_descriptor.reduce((sum: number, val: number, i: number) => 
+            sum + Math.pow(val - faceDescriptor[i], 2), 0)
+        );
+        
+        return dist < threshold;
+      });
+
+      if (duplicate) {
+        return NextResponse.json({ 
+          error: `WAJAH SUDAH TERDAFTAR: Wajah ini terdeteksi milik "${duplicate.name}" (${duplicate.division}). Satu orang hanya boleh memiliki satu profil.`,
+          isDuplicate: true
+        }, { status: 400 });
+      }
+    }
+
+    // 2. Check if user already exists (by name) to decide update vs insert
 
     // Check if user already exists
     const { data: existing } = await supabase
