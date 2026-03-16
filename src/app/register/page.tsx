@@ -9,7 +9,7 @@ const DIVISIONS = [
   "Olahraga", "Humas", "Keamanan", "Pendidikan", "Parlemanterian"
 ];
 
-const CAPTURE_COUNT = 5;  // Number of face captures for reliable descriptor
+const CAPTURE_COUNT = 10; // Increased from 5 for higher accuracy
 const CAPTURE_INTERVAL_MS = 600; // Time between captures
 const FACE_SCORE_THRESHOLD = 0.5;
 const FACE_MATCH_THRESHOLD = 0.40; // Stricter = Lower chance of false duplicate
@@ -570,15 +570,6 @@ export default function RegisterFace() {
                       >
                         <ExternalLink size={18} /> Lanjut ke Presensi
                       </Link>
-                      <button 
-                        onClick={() => {
-                          setDuplicateFound(null);
-                          setDetectionStatus('Mencoba lagi...');
-                        }}
-                        className="text-slate-500 text-xs hover:text-slate-300 transition"
-                      >
-                        Bukan saya? Coba scan ulang
-                      </button>
                     </div>
                   </div>
                 )}
