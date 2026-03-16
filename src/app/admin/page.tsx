@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { supabase } from '@/lib/supabase';
 import { QRCodeSVG } from 'qrcode.react';
-import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, MapPin, Archive, RotateCcw, Terminal, ShieldAlert, Image as ImageIcon, Camera } from 'lucide-react';
+import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, MapPin, Archive, RotateCcw, Terminal, ShieldAlert, Image as ImageIcon, Camera, Menu } from 'lucide-react';
 import { format } from 'date-fns';
 
 const DIVISIONS = [
@@ -28,6 +28,7 @@ export default function AdminDashboard() {
   const [securityLogs, setSecurityLogs] = useState<any[]>([]);
   const [showSecurityDashboard, setShowSecurityDashboard] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null); // State for photo modal
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Simple Auth Check
   const handleLogin = (e: React.FormEvent) => {
@@ -305,17 +306,19 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex selection:bg-blue-100">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex selection:bg-blue-100 overflow-x-hidden">
       {/* Sidebar Navigation */}
-      <aside className="w-72 bg-white border-r border-slate-200 h-screen sticky top-0 flex flex-col z-20 hidden lg:flex">
-         <div className="p-6 border-b border-slate-100">
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:flex'} flex flex-col h-screen`}>
+         <div className="p-6 border-b border-slate-100 flex justify-between items-center">
             <h1 className="text-xl font-bold text-slate-800 flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white text-sm font-black shadow-sm">
                 C
               </div>
               CSSA Hub
             </h1>
-            <p className="text-xs text-slate-500 mt-2 font-medium tracking-wide">ATTENDANCE MANAGEMENT</p>
+            <button onClick={() => setIsMobileMenuOpen(false)} className="lg:hidden text-slate-400 hover:text-slate-600 p-1">
+              <X size={20} />
+            </button>
          </div>
 
          <div className="p-4 flex-1 overflow-y-auto">
@@ -354,7 +357,10 @@ export default function AdminDashboard() {
                {meetings.map((meeting) => (
                 <div
                   key={meeting.id}
-                  onClick={() => setSelectedMeeting(meeting)}
+                  onClick={() => {
+                    setSelectedMeeting(meeting);
+                    setIsMobileMenuOpen(false);
+                  }}
                   className={`group p-3 rounded-xl cursor-pointer transition-all border ${
                     selectedMeeting?.id === meeting.id
                       ? 'bg-blue-50 border-blue-100 text-blue-900 shadow-sm'
@@ -400,16 +406,33 @@ export default function AdminDashboard() {
          </div>
       </aside>
 
+      {/* Mobile Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40 lg:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
         {/* Header */}
-        <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center shrink-0 z-10 lg:hidden">
+        <header className="bg-white border-b border-slate-200 px-4 md:px-8 py-4 flex justify-between items-center shrink-0 z-10 lg:hidden">
            {/* Mobile header */}
-           <h1 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <div className="w-6 h-6 rounded-md bg-blue-600 flex items-center justify-center text-white text-xs font-black">C</div>
-              CSSA Hub
-           </h1>
-           <button onClick={() => setIsAuthenticated(false)} className="text-sm text-slate-500 hover:text-slate-800">Sign Out</button>
+           <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setIsMobileMenuOpen(true)}
+                className="p-2 -ml-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
+                aria-label="Toggle Menu"
+              >
+                <Menu size={20} />
+              </button>
+              <h1 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                 <div className="w-6 h-6 rounded-md bg-blue-600 flex items-center justify-center text-white text-xs font-black">C</div>
+                 CSSA Hub
+              </h1>
+           </div>
+           <button onClick={() => setIsAuthenticated(false)} className="text-sm font-bold text-slate-500 hover:text-red-500 transition-colors">Sign Out</button>
         </header>
         <header className="px-8 py-4 flex justify-end items-center shrink-0 z-10 hidden lg:flex border-b border-slate-100 bg-white">
            <button 
