@@ -89,11 +89,8 @@ export default function RegisterFace() {
         const labeled = data.profiles
           .filter((p: FaceProfile) => p.face_descriptor && (p.face_descriptor as any).length > 0)
           .map((p: FaceProfile) => {
-            // Handle both legacy (flat array) and new (array of arrays) format
-            const rawDescriptors = p.face_descriptor;
-            const descriptors: Float32Array[] = Array.isArray((rawDescriptors as any)[0])
-              ? (rawDescriptors as number[][]).map((d: any) => new Float32Array(d))
-              : [new Float32Array(rawDescriptors as number[])];
+            // Already standardized in API to number[][]
+            const descriptors: Float32Array[] = (p.face_descriptor as number[][]).map((d: any) => new Float32Array(d));
 
             return new faceapi.LabeledFaceDescriptors(
               `${p.name}|||${p.division}`,
@@ -261,6 +258,7 @@ export default function RegisterFace() {
     }
 
     const descriptors: Float32Array[] = [];
+    let thumbnail: string | null = null;
 
     for (let i = 0; i < CAPTURE_COUNT; i++) {
       if (!videoRef.current) break;
@@ -283,6 +281,11 @@ export default function RegisterFace() {
               startFaceDetection();
               return;
             }
+          }
+
+          // Capture thumbnail on the first successful detection
+          if (i === 0) {
+            thumbnail = await extractFaceThumbnail(videoRef.current, detection.detection.box);
           }
 
           descriptors.push(detection.descriptor);
@@ -309,7 +312,7 @@ export default function RegisterFace() {
       setDetectionStatus(`✓ ${descriptors.length} sampel wajah diambil!`);
 
       // Submit to API
-      await submitFaceProfile(descriptors);
+      await submitFaceProfile(descriptors, false, thumbnail ? [thumbnail] : undefined);
     } else {
       setError(`Only captured ${descriptors.length} face samples. Need at least 3. Please try again.`);
       setCapturing(false);
@@ -317,7 +320,7 @@ export default function RegisterFace() {
     }
   };
 
-  const submitFaceProfile = async (descriptors: Float32Array[], isTraining = false) => {
+  const submitFaceProfile = async (descriptors: Float32Array[], isTraining = false, thumbnails?: string[]) => {
     setSubmitting(true);
     setDetectionStatus(isTraining ? 'Menambahkan sampel pelatihan...' : 'Menyimpan profil wajah...');
 
@@ -337,7 +340,7 @@ export default function RegisterFace() {
           }
           avgDescriptor[i] = sum / descriptors.length;
         }
-        payloadDescriptors = Array.from(avgDescriptor);
+        payloadDescriptors = [Array.from(avgDescriptor)]; // Wrap in array to match [{descriptor, thumbnail}] format
       }
 
       const res = await fetch('/api/face-profiles', {
@@ -347,6 +350,7 @@ export default function RegisterFace() {
           name: name.trim(),
           division,
           faceDescriptor: payloadDescriptors,
+          thumbnails: thumbnails,
           action: isTraining ? 'append' : undefined
         }),
       });
@@ -415,12 +419,37 @@ export default function RegisterFace() {
         }
       }
 
-      await submitFaceProfile([detection.descriptor], true);
+      // Extract Thumbnail
+      const thumbnail = await extractFaceThumbnail(img, detection.detection.box);
+
+      await submitFaceProfile([detection.descriptor], true, [thumbnail]);
     } catch (err) {
       console.error('[FaceAPI] Photo processing error:', err);
       setError('Gagal memproses foto. Pastikan format gambar benar.');
       setSubmitting(false);
     }
+  };
+
+  const extractFaceThumbnail = (img: HTMLImageElement | HTMLVideoElement, box: faceapi.Box): Promise<string> => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const size = 64; 
+      canvas.width = size;
+      canvas.height = size;
+
+      if (ctx) {
+        const padX = box.width * 0.2;
+        const padY = box.height * 0.2;
+        
+        ctx.drawImage(
+          img,
+          box.x - padX, box.y - padY, box.width + (padX * 2), box.height + (padY * 2),
+          0, 0, size, size
+        );
+      }
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
+    });
   };
 
   // Success Screen

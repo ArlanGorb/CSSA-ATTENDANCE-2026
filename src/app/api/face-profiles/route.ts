@@ -1,22 +1,49 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-// GET — Fetch all face profiles (for face matching on client)
-export async function GET() {
+// GET — Fetch all face profiles (for face matching on client) or specific profile for management
+export async function GET(request: Request) {
   try {
-    const { data, error } = await supabase
+    const { searchParams } = new URL(request.url);
+    const name = searchParams.get('name');
+
+    if (name) {
+      // Fetch specific profile with full data (for management)
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, name, division, face_descriptor')
+        .ilike('name', name.trim())
+        .limit(1);
+
+      if (error) throw error;
+      if (!data || data.length === 0) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+
+      // Return raw data (includes thumbnails)
+      return NextResponse.json({ profile: data[0] });
+    }
+
+    // Default: Fetch all profiles for face recognition (standardized to number[][])
+    const { data: allData, error: allDocsError } = await supabase
       .from('user_profiles')
       .select('id, name, division, face_descriptor')
       .not('face_descriptor', 'is', null);
 
-    if (error) throw error;
+    if (allDocsError) throw allDocsError;
 
-    // Standardize: ensure face_descriptor returned to client logic is always an array of arrays
-    const standardizedProfiles = (data || []).map(p => {
-      let descriptors = p.face_descriptor;
-      if (descriptors && Array.isArray(descriptors) && typeof descriptors[0] === 'number') {
-        descriptors = [descriptors]; // Wrap single legacy descriptor
+    const standardizedProfiles = (allData || []).map(p => {
+      let raw = p.face_descriptor;
+      let descriptors: number[][] = [];
+
+      if (Array.isArray(raw)) {
+        if (typeof raw[0] === 'number') {
+          descriptors = [raw as number[]];
+        } else if (Array.isArray(raw[0])) {
+          descriptors = raw as number[][];
+        } else if (typeof raw[0] === 'object' && raw[0].descriptor) {
+          descriptors = raw.map((item: any) => item.descriptor);
+        }
       }
+
       return { ...p, face_descriptor: descriptors };
     });
 
@@ -27,11 +54,38 @@ export async function GET() {
   }
 }
 
-// POST — Register or update a face profile
+// POST — Register, update, or delete samples
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, division, faceDescriptor, action } = body;
+    const { name, division, faceDescriptor, action, sampleIndex, thumbnail, thumbnails } = body;
+
+    // Handle DELETE SAMPLE action
+    if (action === 'delete_sample' && name && typeof sampleIndex === 'number') {
+      const { data: existing } = await supabase
+        .from('user_profiles')
+        .select('id, face_descriptor')
+        .ilike('name', name.trim())
+        .limit(1);
+
+      if (!existing || existing.length === 0) {
+        return NextResponse.json({ error: 'User not found.' }, { status: 404 });
+      }
+
+      let current = existing[0].face_descriptor;
+      if (!Array.isArray(current)) return NextResponse.json({ error: 'No samples found.' }, { status: 400 });
+
+      // Support all formats during deletion
+      const newDescriptors = current.filter((_, i) => i !== sampleIndex);
+
+      const { error: updateError } = await supabase
+        .from('user_profiles')
+        .update({ face_descriptor: newDescriptors })
+        .eq('id', existing[0].id);
+
+      if (updateError) throw updateError;
+      return NextResponse.json({ success: true, message: 'Sample deleted successfully.' });
+    }
 
     if (!name || !division || !faceDescriptor) {
       return NextResponse.json(
@@ -40,44 +94,39 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate face descriptor format - can be 128-float array or multiple
+    // Validate face descriptor format
     const isSingle = Array.isArray(faceDescriptor) && typeof faceDescriptor[0] === 'number' && faceDescriptor.length === 128;
     const isMultiple = Array.isArray(faceDescriptor) && Array.isArray(faceDescriptor[0]) && faceDescriptor[0].length === 128;
 
     if (!isSingle && !isMultiple) {
-      return NextResponse.json(
-        { error: 'Invalid face descriptor format. Expected 128-float array or array of arrays.' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Invalid face descriptor format.' }, { status: 400 });
     }
 
     const incomingDescriptors = isSingle ? [faceDescriptor] : faceDescriptor;
+    const incomingThumbnails = thumbnails || (thumbnail ? [thumbnail] : []);
 
-    // 1. BIOMETRIC DUPLICATE CHECK (Server-side)
-    // Fetch all existing profiles to compare descriptors
+    // 1. BIOMETRIC DUPLICATE CHECK
     const { data: allProfiles } = await supabase
       .from('user_profiles')
       .select('name, division, face_descriptor')
       .not('face_descriptor', 'is', null);
 
     if (allProfiles && allProfiles.length > 0) {
-      const threshold = 0.40; // Strict threshold for duplicate detection
-      
+      const threshold = 0.40;
       const duplicate = allProfiles.find(p => {
-        // Skip if it's the same name (updating their own profile)
         if (p.name.toLowerCase() === name.trim().toLowerCase()) return false;
         
-        // Handle both single and multiple descriptors in DB
-        let dbDescriptors = p.face_descriptor;
-        if (typeof dbDescriptors[0] === 'number') dbDescriptors = [dbDescriptors];
+        let dbRaw = p.face_descriptor;
+        let dbDescriptors: number[][] = [];
+        if (Array.isArray(dbRaw)) {
+          if (typeof dbRaw[0] === 'number') dbDescriptors = [dbRaw as number[]];
+          else if (Array.isArray(dbRaw[0])) dbDescriptors = dbRaw as number[][];
+          else if (typeof dbRaw[0] === 'object') dbDescriptors = dbRaw.map((i: any) => i.descriptor);
+        }
 
-        // Check against ANY of the incoming descriptors against ANY of the stored ones
         return incomingDescriptors.some((incDesc: number[]) => {
-          return (dbDescriptors as number[][]).some(dbDesc => {
-            const dist = Math.sqrt(
-              dbDesc.reduce((sum: number, val: number, i: number) => 
-                sum + Math.pow(val - incDesc[i], 2), 0)
-            );
+          return dbDescriptors.some(dbDesc => {
+            const dist = Math.sqrt(dbDesc.reduce((sum: number, val: number, i: number) => sum + Math.pow(val - incDesc[i], 2), 0));
             return dist < threshold;
           });
         });
@@ -85,7 +134,7 @@ export async function POST(request: Request) {
 
       if (duplicate) {
         return NextResponse.json({ 
-          error: `WAJAH SUDAH TERDAFTAR: Wajah ini terdeteksi milik "${duplicate.name}" (${duplicate.division}).`,
+          error: `WAJAH SUDAH TERDAFTAR: Milik "${duplicate.name}" (${duplicate.division}).`,
           isDuplicate: true,
           name: duplicate.name,
           division: duplicate.division
@@ -93,69 +142,54 @@ export async function POST(request: Request) {
       }
     }
 
-    // 2. Check if user already exists (by name) to decide update vs insert
-
-    // Check if user already exists
+    // 2. Insert or Update
     const { data: existing } = await supabase
       .from('user_profiles')
       .select('id, face_descriptor')
       .ilike('name', name.trim())
       .limit(1);
 
+    // Prepare new data entries: { descriptor, thumbnail }
+    const newDataEntries = incomingDescriptors.map((desc: number[], i: number) => ({
+      descriptor: desc,
+      thumbnail: incomingThumbnails[i] || null
+    }));
+
     if (existing && existing.length > 0) {
-      let finalDescriptors = incomingDescriptors;
+      let finalData = newDataEntries;
 
       if (action === 'append') {
-        // Legacy support: if existing is a single flat array
-        let currentDescriptors = existing[0].face_descriptor;
-        if (currentDescriptors && typeof currentDescriptors[0] === 'number') {
-          currentDescriptors = [currentDescriptors];
-        } else if (!currentDescriptors) {
-          currentDescriptors = [];
+        let currentRaw = existing[0].face_descriptor;
+        let currentEntries: any[] = [];
+
+        if (Array.isArray(currentRaw)) {
+          if (typeof currentRaw[0] === 'number') {
+            currentEntries = [{ descriptor: currentRaw, thumbnail: null }];
+          } else if (Array.isArray(currentRaw[0])) {
+            currentEntries = currentRaw.map(d => ({ descriptor: d, thumbnail: null }));
+          } else {
+            currentEntries = currentRaw;
+          }
         }
 
-        // Avoid exact duplicates in the set
-        finalDescriptors = [...(currentDescriptors as number[][]), ...incomingDescriptors];
-        
-        // Limit total samples to 20 for performance/storage
-        if (finalDescriptors.length > 20) {
-          finalDescriptors = finalDescriptors.slice(-20);
-        }
+        finalData = [...currentEntries, ...newDataEntries];
+        if (finalData.length > 20) finalData = finalData.slice(-20);
       }
 
-      // Update existing profile
       const { error: updateError } = await supabase
         .from('user_profiles')
-        .update({
-          division,
-          face_descriptor: finalDescriptors,
-        })
+        .update({ division, face_descriptor: finalData })
         .eq('id', existing[0].id);
 
       if (updateError) throw updateError;
-
-      return NextResponse.json({
-        success: true,
-        message: action === 'append' ? 'Face profile samples added.' : 'Face profile updated successfully.',
-        updated: true,
-      });
+      return NextResponse.json({ success: true, message: 'Face profile updated.', updated: true });
     } else {
-      // Insert new profile
       const { error: insertError } = await supabase
         .from('user_profiles')
-        .insert([{
-          name: name.trim(),
-          division,
-          face_descriptor: incomingDescriptors,
-        }]);
+        .insert([{ name: name.trim(), division, face_descriptor: newDataEntries }]);
 
       if (insertError) throw insertError;
-
-      return NextResponse.json({
-        success: true,
-        message: 'Face profile registered successfully.',
-        updated: false,
-      });
+      return NextResponse.json({ success: true, message: 'Face profile registered.', updated: false });
     }
   } catch (error: any) {
     console.error('[FaceProfiles] POST error:', error);

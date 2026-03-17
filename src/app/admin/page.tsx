@@ -56,6 +56,12 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // Sample Management states
+  const [isSampleModalOpen, setIsSampleModalOpen] = useState(false);
+  const [selectedStudentSamples, setSelectedStudentSamples] = useState<any[]>([]);
+  const [isDeletingSample, setIsDeletingSample] = useState<number | null>(null);
+  const [managementStudent, setManagementStudent] = useState<FaceProfile | null>(null);
+
 
   // Simple Auth Check
   const handleLogin = (e: React.FormEvent) => {
@@ -375,7 +381,11 @@ export default function AdminDashboard() {
         return;
       }
 
-      await submitFaceProfile([detection.descriptor]);
+      // Extract Thumbnail
+      setTrainingStatus('Menghasilkan thumbnail...');
+      const thumbnail = await extractFaceThumbnail(img, detection.detection.box);
+
+      await submitFaceProfile([detection.descriptor], [thumbnail]);
     } catch (err) {
       console.error('[FaceAPI] Photo processing error:', err);
       setError('Gagal memproses foto.');
@@ -383,7 +393,30 @@ export default function AdminDashboard() {
     }
   };
 
-  const submitFaceProfile = async (descriptors: Float32Array[]) => {
+  const extractFaceThumbnail = (img: HTMLImageElement, box: faceapi.Box): Promise<string> => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const size = 64; // Low-res for storage efficiency
+      canvas.width = size;
+      canvas.height = size;
+
+      if (ctx) {
+        // Add 20% padding around face
+        const padX = box.width * 0.2;
+        const padY = box.height * 0.2;
+        
+        ctx.drawImage(
+          img,
+          box.x - padX, box.y - padY, box.width + (padX * 2), box.height + (padY * 2),
+          0, 0, size, size
+        );
+      }
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
+    });
+  };
+
+  const submitFaceProfile = async (descriptors: Float32Array[], thumbnails?: string[]) => {
     if (!trainingStudent) return;
 
     setSubmitting(true);
@@ -399,6 +432,7 @@ export default function AdminDashboard() {
           name: trainingStudent.name,
           division: trainingStudent.division,
           faceDescriptor: payloadDescriptors,
+          thumbnails: thumbnails,
           action: 'append'
         }),
       });
@@ -419,6 +453,57 @@ export default function AdminDashboard() {
       setError('Kesalahan jaringan. Silakan coba lagi.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const fetchStudentSamples = async (student: FaceProfile) => {
+    setLoading(true);
+    setManagementStudent(student);
+    try {
+      const res = await fetch(`/api/face-profiles?name=${encodeURIComponent(student.name)}`);
+      const data = await res.json();
+      if (data.profile) {
+        let raw = data.profile.face_descriptor;
+        if (Array.isArray(raw)) {
+           if (typeof raw[0] === 'number') raw = [{ descriptor: raw, thumbnail: null }];
+           else if (Array.isArray(raw[0])) raw = raw.map(d => ({ descriptor: d, thumbnail: null }));
+        }
+        setSelectedStudentSamples(raw || []);
+        setIsSampleModalOpen(true);
+      }
+    } catch (err) {
+      console.error("Error fetching samples:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteSample = async (studentName: string, index: number) => {
+    if (!confirm('Anda yakin ingin menghapus sampel wajah ini?')) return;
+    
+    setIsDeletingSample(index);
+    try {
+      const res = await fetch('/api/face-profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: studentName,
+          sampleIndex: index,
+          action: 'delete_sample'
+        }),
+      });
+
+      if (res.ok) {
+        // Update local state
+        setSelectedStudentSamples(prev => prev.filter((_, i) => i !== index));
+        fetchAllStudents();
+      } else {
+        alert('Gagal menghapus sampel.');
+      }
+    } catch (err) {
+      console.error("Delete error:", err);
+    } finally {
+      setIsDeletingSample(null);
     }
   };
 
@@ -767,18 +852,27 @@ export default function AdminDashboard() {
                                   </span>
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                  <button
-                                    onClick={() => {
-                                      setTrainingStudent(student);
-                                      setIsTrainingModalOpen(true);
-                                      setError(null);
-                                      setSuccess(false);
-                                    }}
-                                    className="inline-flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-blue-600 hover:text-blue-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-all shadow-sm"
-                                  >
-                                    <Camera size={14} />
-                                    Latih Wajah
-                                  </button>
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      onClick={() => fetchStudentSamples(student)}
+                                      className="inline-flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-slate-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-all shadow-sm"
+                                    >
+                                      <ImageIcon size={14} />
+                                      Kelola Sampel
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setTrainingStudent(student);
+                                        setIsTrainingModalOpen(true);
+                                        setError(null);
+                                        setSuccess(false);
+                                      }}
+                                      className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-all shadow-md shadow-blue-500/20"
+                                    >
+                                      <Camera size={14} />
+                                      Latih Wajah
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -1155,6 +1249,82 @@ export default function AdminDashboard() {
                   className="px-6 py-2 text-slate-600 font-bold text-sm hover:text-slate-800 disabled:opacity-50"
                 >
                   Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sample Manager Modal */}
+        {isSampleModalOpen && selectedStudentSamples && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
+            <div className="bg-white max-w-2xl w-full rounded-3xl overflow-hidden shadow-2xl animate-zoom-in flex flex-col max-h-[90vh]">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">
+                    <ImageIcon size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800">Pengelola Sampel Wajah</h3>
+                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Total: {selectedStudentSamples.length} Sampel</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsSampleModalOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto">
+                {selectedStudentSamples.length === 0 ? (
+                  <div className="text-center py-20 text-slate-400">
+                    <AlertTriangle size={48} className="mx-auto mb-4 opacity-20" />
+                    <p>Tidak ada sampel wajah ditemukan.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {selectedStudentSamples.map((sample, idx) => (
+                      <div key={idx} className="group relative bg-slate-50 rounded-2xl p-2 border border-slate-100 hover:border-blue-200 transition-all hover:shadow-md">
+                        <div className="aspect-square rounded-xl overflow-hidden bg-slate-200 border border-slate-200">
+                          {sample.thumbnail ? (
+                            <img src={sample.thumbnail} alt={`Sample ${idx}`} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-100 italic text-[8px] text-center p-2">
+                              <UserCircle size={20} className="mb-1 opacity-50" />
+                              Legacy Data
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="mt-2 flex items-center justify-between px-1">
+                          <span className="text-[10px] font-bold text-slate-400">#{idx + 1}</span>
+                          <button 
+                            disabled={isDeletingSample === idx}
+                            onClick={() => managementStudent && handleDeleteSample(managementStudent.name, idx)}
+                            className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                          >
+                            {isDeletingSample === idx ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                          </button>
+                        </div>
+
+                        {/* Hover Overlay */}
+                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                           <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <button
+                  onClick={() => setIsSampleModalOpen(false)}
+                  className="px-6 py-2 bg-white border border-slate-200 text-slate-600 font-bold text-sm rounded-xl hover:bg-slate-50 transition-all"
+                >
+                  Selesai
                 </button>
               </div>
             </div>
