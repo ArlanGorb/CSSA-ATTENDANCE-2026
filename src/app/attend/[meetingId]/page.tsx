@@ -20,18 +20,20 @@ const FACE_MATCH_THRESHOLD = 0.45; // Adjusted for better reliability (was 0.38)
 const REQUIRED_CONSECUTIVE_MATCHES = 3; 
 const TINY_FACE_INPUT_SIZE = 416; // Increased from 320 for more detail
 
-// Liveness Detection (Mouth Open)
-const MAR_THRESHOLD = 0.5; // Mouth Aspect Ratio above this = mouth open
+// Liveness Detection (Smile)
+const SMILE_THRESHOLD = 0.78; // Ratio of mouth width to eye distance
 
-// Mouth Aspect Ratio calculation from inner mouth landmarks (60-67)
-function computeMAR(mouth: faceapi.Point[]): number {
+// Smile Score calculation: Mouth width / Eye distance
+function computeSmileScore(landmarks: faceapi.Point[]): number {
   const dist = (a: faceapi.Point, b: faceapi.Point) =>
     Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
-  // mouth[2] is top inner lip, mouth[6] is bottom inner lip
-  // mouth[0] is left corner, mouth[4] is right corner
-  const v = dist(mouth[2], mouth[6]);
-  const h = dist(mouth[0], mouth[4]);
-  return h > 0 ? v / h : 0;
+  
+  // Landmarks: 48 (left corner), 54 (right corner)
+  const mouthWidth = dist(landmarks[48], landmarks[54]);
+  // Landmarks: 36 (left eye outer), 45 (right eye outer)
+  const eyeDist = dist(landmarks[36], landmarks[45]);
+  
+  return eyeDist > 0 ? mouthWidth / eyeDist : 0;
 }
 
 // Capture snapshot from video
@@ -89,9 +91,9 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   const [matchAttempted, setMatchAttempted] = useState(false);
   const labeledDescriptors = useRef<faceapi.LabeledFaceDescriptors[]>([]);
 
-  // Liveness (Mouth Open) States
+  // Liveness (Smile) States
   const [livenessVerified, setLivenessVerified] = useState(false);
-  const [mouthClosedDetected, setMouthClosedDetected] = useState(false); // New liveness state
+  const [neutralFaceDetected, setNeutralFaceDetected] = useState(false); 
   const [photoCaptured, setPhotoCaptured] = useState(false);
 
   // Identity Stability
@@ -192,6 +194,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
     setMatchedProfile(null);
     setMatchAttempted(false);
     setLivenessVerified(false);
+    setNeutralFaceDetected(false);
     setDetectionStatus('Memindai wajah...');
 
     let recognitionCounter = 0;
@@ -233,17 +236,16 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
             };
             setFaceBox(currentFaceBox);
 
-            // Mouth Open detection
+            // Smile detection for liveness
             const landmarks = fullDetection.landmarks.positions;
-            const mouthInner = landmarks.slice(60, 68);
-            const MAR = computeMAR(mouthInner);
+            const smileScore = computeSmileScore(landmarks);
 
-            // State-based liveness: Must see closed mouth first
-            if (MAR < 0.2) {
-              setMouthClosedDetected(true);
+            // State-based liveness: Must see neutral face first, then smile
+            if (smileScore < 0.72) {
+              setNeutralFaceDetected(true);
             }
 
-            if (mouthClosedDetected && MAR > MAR_THRESHOLD) {
+            if (neutralFaceDetected && smileScore > SMILE_THRESHOLD) {
               setLivenessVerified(true);
             }
 
@@ -291,10 +293,10 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
                 setMatchAttempted(true);
               }
 
-              if (!mouthClosedDetected) {
-                setDetectionStatus('Tutup mulut sebentar...');
+              if (!neutralFaceDetected) {
+                setDetectionStatus('Tampilkan wajah netral...');
               } else if (!livenessVerified) {
-                setDetectionStatus(`Buka mulut lebar untuk konfirmasi liveness`);
+                setDetectionStatus(`Tersenyum lebar untuk konfirmasi liveness`);
               } else if (matchedProfile) {
                 setDetectionStatus(`Terverifikasi: ${matchedProfile.name}`);
               } else if (!matchedProfile && matchAttempted) {
