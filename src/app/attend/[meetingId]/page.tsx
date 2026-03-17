@@ -241,7 +241,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
             const smileScore = computeSmileScore(landmarks);
 
             // State-based liveness: Must see neutral face first, then smile
-            if (smileScore < 0.72) {
+            if (smileScore < 0.74) {
               setNeutralFaceDetected(true);
             }
 
@@ -499,7 +499,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
               {faceDetected && (
                 <div className={`w-full mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-300 ${livenessVerified ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400' : 'bg-slate-500/10 border border-slate-500/30 text-slate-400'}`}>
                   {livenessVerified ? <ShieldCheck size={14} /> : <Loader2 size={14} className="animate-spin" />}
-                  <span className="flex-1">{livenessVerified ? 'LIVENESS TERVERIFIKASI' : 'Buka mulut Anda sedikit'}</span>
+                  <span className="flex-1">{livenessVerified ? 'LIVENESS TERVERIFIKASI' : 'Tersenyum lebar untuk konfirmasi'}</span>
                 </div>
               )}
 
@@ -597,7 +597,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
               <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-8 text-xs text-blue-100/70 leading-relaxed text-left space-y-2">
                 <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Pastikan pencahayaan cukup</p>
                 <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Lihat langsung ke kamera</p>
-                <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Buka mulut saat diminta</p>
+                <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Tersenyum saat diminta</p>
               </div>
 
               <button onClick={startCamera} disabled={!modelsLoaded} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-5 rounded-2xl shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 border border-white/10">
