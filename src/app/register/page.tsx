@@ -386,10 +386,11 @@ export default function RegisterFace() {
     if (!file || !modelsLoaded) return;
 
     setSubmitting(true);
-    setDetectionStatus('Memproses foto...');
+    setDetectionStatus('Mendeteksi wajah (Deep Analysis)...');
     setError(null);
-    setDuplicateFound(null);      setDetectionStatus('Mendeteksi wajah (Deep Analysis)...');
-      
+    setDuplicateFound(null);
+
+    try {
       const img = await faceapi.bufferToImage(file);
       const detection = await faceapi
         .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
@@ -406,7 +407,7 @@ export default function RegisterFace() {
       if (labeledDescriptors.current.length > 0) {
         const matcher = new faceapi.FaceMatcher(labeledDescriptors.current, FACE_MATCH_THRESHOLD);
         const match = matcher.findBestMatch(detection.descriptor);
-        if (match.label !== 'unknown' && !match.label.startsWith(name.trim())) {
+        if (match.label !== 'unknown' && !match.label.split('|||')[0].includes(name.trim())) {
           const [dName, dDiv] = match.label.split('|||');
           setDuplicateFound({ name: dName, division: dDiv });
           setSubmitting(false);
