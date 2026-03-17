@@ -3,7 +3,15 @@ import { useState, useEffect } from 'react';
 
 import { supabase } from '@/lib/supabase';
 import { QRCodeSVG } from 'qrcode.react';
-import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, Archive, RotateCcw, Terminal, ShieldAlert, Image as ImageIcon, Camera, Menu } from 'lucide-react';
+import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, Archive, RotateCcw, Terminal, ShieldAlert, Image as ImageIcon, Camera, Menu, UserCircle, Search, Upload, Loader2, Sparkles } from 'lucide-react';
+import * as faceapi from 'face-api.js';
+
+type FaceProfile = {
+  id: string;
+  name: string;
+  division: string;
+  face_descriptor: number[] | number[][];
+};
 
 
 import { format } from 'date-fns';
@@ -33,6 +41,20 @@ export default function AdminDashboard() {
   const [showSecurityDashboard, setShowSecurityDashboard] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null); // State for photo modal
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // New Management view states
+  const [activeView, setActiveView] = useState<'meetings' | 'students'>('meetings');
+  const [allStudents, setAllStudents] = useState<FaceProfile[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Face Training states
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [trainingStudent, setTrainingStudent] = useState<FaceProfile | null>(null);
+  const [isTrainingModalOpen, setIsTrainingModalOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [trainingStatus, setTrainingStatus] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
 
   // Simple Auth Check
@@ -56,7 +78,35 @@ export default function AdminDashboard() {
     const auth = localStorage.getItem('cssa_admin_auth');
     if (auth === 'true') setIsAuthenticated(true);
     fetchMeetings();
+    loadModels();
+    fetchAllStudents();
   }, [showArchived]); // Re-fetch on toggle
+
+  const loadModels = async () => {
+    try {
+      if (modelsLoaded) return;
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+        faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
+        faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
+      ]);
+      setModelsLoaded(true);
+    } catch (err) {
+      console.error("Error loading face models:", err);
+    }
+  };
+
+  const fetchAllStudents = async () => {
+    try {
+      const res = await fetch('/api/face-profiles');
+      const data = await res.json();
+      if (data.profiles) {
+        setAllStudents(data.profiles);
+      }
+    } catch (err) {
+      console.error("Error fetching students:", err);
+    }
+  };
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -303,6 +353,74 @@ export default function AdminDashboard() {
     if (selectedMeeting) fetchAttendance(selectedMeeting.id);
   };
 
+  const handleTrainingUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !modelsLoaded || !trainingStudent) return;
+
+    setSubmitting(true);
+    setTrainingStatus('Memproses foto...');
+    setError(null);
+
+    try {
+      const img = await faceapi.bufferToImage(file);
+      const detection = await faceapi
+        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 }))
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (!detection) {
+        setError('Wajah tidak terdeteksi dalam foto. Gunakan foto yang lebih jelas.');
+        setSubmitting(false);
+        return;
+      }
+
+      await submitFaceProfile([detection.descriptor]);
+    } catch (err) {
+      console.error('[FaceAPI] Photo processing error:', err);
+      setError('Gagal memproses foto.');
+      setSubmitting(false);
+    }
+  };
+
+  const submitFaceProfile = async (descriptors: Float32Array[]) => {
+    if (!trainingStudent) return;
+
+    setSubmitting(true);
+    setTrainingStatus('Menyimpan sampel pelatihan...');
+
+    try {
+      const payloadDescriptors = descriptors.map(d => Array.from(d));
+
+      const res = await fetch('/api/face-profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: trainingStudent.name,
+          division: trainingStudent.division,
+          faceDescriptor: payloadDescriptors,
+          action: 'append'
+        }),
+      });
+
+      if (res.ok) {
+        setSuccess(true);
+        fetchAllStudents();
+        setTimeout(() => {
+          setIsTrainingModalOpen(false);
+          setTrainingStudent(null);
+          setSuccess(false);
+        }, 2000);
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Gagal menyimpan profil wajah.');
+      }
+    } catch (err) {
+      setError('Kesalahan jaringan. Silakan coba lagi.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const deleteAttendance = async (attendanceId: string, memberName: string) => {
     if (confirm(`Are you sure you want to delete ${memberName}?`)) {
       const { error } = await supabase.from('attendance').delete().eq('id', attendanceId);
@@ -389,13 +507,44 @@ export default function AdminDashboard() {
          </div>
 
          <div className="p-4 flex-1 overflow-y-auto">
+            <div className="space-y-1">
+               <button
+                  onClick={() => setActiveView('meetings')}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${
+                    activeView === 'meetings'
+                      ? 'bg-blue-50 border-blue-100 text-blue-900 shadow-sm'
+                      : 'bg-transparent border-transparent hover:bg-slate-50 text-slate-600'
+                  }`}
+               >
+                  <Clock size={18} className={activeView === 'meetings' ? 'text-blue-600' : 'text-slate-400'} />
+                  <span className="font-medium text-sm">Monitor Presensi</span>
+               </button>
+               <button
+                  onClick={() => setActiveView('students')}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${
+                    activeView === 'students'
+                      ? 'bg-blue-50 border-blue-100 text-blue-900 shadow-sm'
+                      : 'bg-transparent border-transparent hover:bg-slate-50 text-slate-600'
+                  }`}
+               >
+                  <Users size={18} className={activeView === 'students' ? 'text-blue-600' : 'text-slate-400'} />
+                  <span className="font-medium text-sm">Data Mahasiswa</span>
+               </button>
+            </div>
+
+            <div className="my-6 border-t border-slate-100"></div>
+
             <div className="flex justify-between items-center px-2 mb-4">
                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                   {showArchived ? 'Archived' : 'Active'} Sessions
                </h3>
+               {/* ... rest of existing buttons ... */}
                <div className="flex gap-1">
                    <button
-                      onClick={() => setShowArchived(!showArchived)}
+                      onClick={() => {
+                        setShowArchived(!showArchived);
+                        setActiveView('meetings');
+                      }}
                       className={`p-1.5 rounded-md transition-colors ${showArchived ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}
                       title={showArchived ? "Show Active" : "Show Archived"}
                     >
@@ -403,7 +552,10 @@ export default function AdminDashboard() {
                    </button>
                    {!showArchived && (
                        <button
-                          onClick={() => setCreateFormVisible(true)}
+                          onClick={() => {
+                            setCreateFormVisible(true);
+                            setActiveView('meetings');
+                          }}
                           className="p-1.5 rounded-md text-slate-400 hover:bg-slate-50 hover:text-blue-600 transition-colors"
                           title="Initialize New Session"
                         >
@@ -411,7 +563,10 @@ export default function AdminDashboard() {
                        </button>
                    )}
                    <button
-                      onClick={() => setShowSecurityDashboard(!showSecurityDashboard)}
+                      onClick={() => {
+                        setShowSecurityDashboard(!showSecurityDashboard);
+                        setActiveView('meetings');
+                      }}
                       className={`p-1.5 rounded-md transition-colors ${showSecurityDashboard ? 'bg-red-50 text-red-600' : 'text-slate-400 hover:bg-slate-50 hover:text-red-600'}`}
                       title="Intrusion Logs"
                     >
@@ -552,7 +707,87 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {selectedMeeting ? (
+            {activeView === 'students' ? (
+              <div className="space-y-6 animate-fade-in-up">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="px-6 py-5 border-b border-slate-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-slate-50/50">
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-800">Manajemen Mahasiswa</h2>
+                      <p className="text-sm text-slate-500 mt-1">Kelola profil wajah dan pelatihan AI untuk mahasiswa.</p>
+                    </div>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <input 
+                        type="text" 
+                        placeholder="Cari nama atau divisi..." 
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-64 shadow-sm"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="p-0 overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50/50 text-slate-500 uppercase text-[10px] font-bold tracking-widest">
+                        <tr>
+                          <th className="px-6 py-4 text-left">Nama Lengkap</th>
+                          <th className="px-6 py-4 text-left">Divisi</th>
+                          <th className="px-6 py-4 text-center">Sampel Wajah</th>
+                          <th className="px-6 py-4 text-right">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {allStudents
+                          .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.division.toLowerCase().includes(searchQuery.toLowerCase()))
+                          .map((student) => {
+                            const sampleCount = Array.isArray(student.face_descriptor[0]) 
+                              ? (student.face_descriptor as any).length 
+                              : 1;
+                            
+                            return (
+                              <tr key={student.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
+                                      <UserCircle size={20} />
+                                    </div>
+                                    <span className="font-semibold text-slate-800">{student.name}</span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-slate-500">{student.division}</td>
+                                <td className="px-6 py-4 text-center">
+                                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                                    sampleCount >= 10 ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+                                    sampleCount >= 5 ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                                    'bg-slate-50 text-slate-600 border border-slate-100'
+                                  }`}>
+                                    {sampleCount} Sampel
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                  <button
+                                    onClick={() => {
+                                      setTrainingStudent(student);
+                                      setIsTrainingModalOpen(true);
+                                      setError(null);
+                                      setSuccess(false);
+                                    }}
+                                    className="inline-flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-blue-600 hover:text-blue-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-all shadow-sm"
+                                  >
+                                    <Camera size={14} />
+                                    Latih Wajah
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            ) : selectedMeeting ? (
               <div className="space-y-6 md:space-y-8 animate-fade-in-up relative z-10">      
                 {showSecurityDashboard ? (
                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative min-h-[60vh]">
@@ -828,6 +1063,101 @@ export default function AdminDashboard() {
                     </div>
                 </div>
             </div>
+        )}
+
+        {/* Face Training Modal */}
+        {isTrainingModalOpen && trainingStudent && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
+            <div className="bg-white max-w-md w-full rounded-3xl overflow-hidden shadow-2xl animate-zoom-in">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
+                    <Sparkles size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800">Latih Wajah</h3>
+                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Mahasiswa: {trainingStudent.name}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => !submitting && setIsTrainingModalOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-8">
+                {success ? (
+                  <div className="text-center py-6 animate-fade-in">
+                    <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <CheckCircle size={32} />
+                    </div>
+                    <h4 className="text-lg font-bold text-slate-800">Berhasil!</h4>
+                    <p className="text-slate-500 text-sm mt-1">Sampel wajah berhasil ditambahkan ke profil {trainingStudent.name}.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
+                      <p className="text-xs text-blue-700 leading-relaxed font-medium">
+                        Unggah foto wajah {trainingStudent.name} untuk meningkatkan akurasi pengenalan AI. Gunakan foto yang jelas dan menghadap ke depan.
+                      </p>
+                    </div>
+
+                    {error && (
+                      <div className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-start gap-2 text-red-600 animate-shake">
+                        <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                        <p className="text-xs font-semibold">{error}</p>
+                      </div>
+                    )}
+
+                    <input
+                      type="file"
+                      id="admin-photo-upload"
+                      accept="image/*"
+                      onChange={handleTrainingUpload}
+                      className="hidden"
+                      disabled={submitting}
+                    />
+
+                    <label
+                      htmlFor="admin-photo-upload"
+                      className={`w-full py-10 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-3 transition-all cursor-pointer ${
+                        submitting 
+                          ? 'bg-slate-50 border-slate-200 cursor-not-allowed' 
+                          : 'bg-white border-slate-200 hover:border-blue-400 hover:bg-blue-50/30'
+                      }`}
+                    >
+                      {submitting ? (
+                        <>
+                          <Loader2 size={32} className="text-blue-500 animate-spin" />
+                          <span className="text-sm font-bold text-slate-600">{trainingStatus}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload size={32} className="text-slate-300" />
+                          <div className="text-center">
+                            <span className="text-sm font-bold text-slate-700 block">Pilih Foto</span>
+                            <span className="text-[10px] text-slate-400">JPG, PNG atau WEBP</span>
+                          </div>
+                        </>
+                      )}
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <button
+                  onClick={() => setIsTrainingModalOpen(false)}
+                  disabled={submitting}
+                  className="px-6 py-2 text-slate-600 font-bold text-sm hover:text-slate-800 disabled:opacity-50"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Photo Preview Modal */}
