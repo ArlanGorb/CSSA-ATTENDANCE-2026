@@ -98,6 +98,10 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   const [smileScore, setSmileScore] = useState(0); 
   const [photoCaptured, setPhotoCaptured] = useState(false);
 
+  // Liveness (Smile) Refs for logic loop
+  const livenessVerifiedRef = useRef(false);
+  const neutralFaceDetectedRef = useRef(false);
+  
   // Identity Stability
   const consecutiveMatchCount = useRef(0);
   const lastMatchedName = useRef<string | null>(null);
@@ -196,7 +200,9 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
     setMatchedProfile(null);
     setMatchAttempted(false);
     setLivenessVerified(false);
+    livenessVerifiedRef.current = false;
     setNeutralFaceDetected(false);
+    neutralFaceDetectedRef.current = false;
     setDetectionStatus('Memindai wajah...');
 
     let recognitionCounter = 0;
@@ -244,12 +250,19 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
             setSmileScore(currentScore);
 
             // State-based liveness: Must see neutral face first, then smile
-            if (currentScore < 0.70) {
-              setNeutralFaceDetected(true);
+            // Lenient neutral check: anything less than 72% smile
+            if (currentScore < 0.72) {
+              if (!neutralFaceDetectedRef.current) {
+                neutralFaceDetectedRef.current = true;
+                setNeutralFaceDetected(true);
+              }
             }
 
-            if (neutralFaceDetected && currentScore > SMILE_THRESHOLD) {
-              setLivenessVerified(true);
+            if (neutralFaceDetectedRef.current && currentScore > SMILE_THRESHOLD) {
+              if (!livenessVerifiedRef.current) {
+                livenessVerifiedRef.current = true;
+                setLivenessVerified(true);
+              }
             }
 
             if (faceConfirmCount.current >= FACE_CONFIRM_FRAMES) {
