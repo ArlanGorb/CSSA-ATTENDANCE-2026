@@ -395,7 +395,13 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   };
 
   const handleScan = () => {
-    if (!canAuthenticate()) return;
+    const currentProfile = matchedProfile; // Capture the current profile state immediately
+    if (!currentProfile) {
+      console.warn('[handleScan] No matched profile found at click time');
+      return;
+    }
+
+    console.log('[handleScan] Identity confirmed, preparing final capture...', currentProfile.name);
     
     // Capture metadata/photo state before finalizing
     if (videoRef.current) {
@@ -405,21 +411,29 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
     setScanning(true);
     setError(null);
     
-    // Security: We already verified for 10 consecutive frames (~3s)
-    // Plus liveness (mouth open). We don't need a single-frame secondary check 
-    // that might fail due to a blink or slight blur in that specific instant.
-    if (detectionLoop.current) clearInterval(detectionLoop.current);
+    // Stop the detection loop immediately to freeze the state
+    if (detectionLoop.current) {
+      console.log('[handleScan] Clearing detection loop');
+      clearInterval(detectionLoop.current);
+      detectionLoop.current = null;
+    }
 
     setTimeout(() => {
+      console.log('[handleScan] Executing final submission for:', currentProfile.name);
       // Final snap just before submit for better accuracy
       if (videoRef.current) photoRef.current = captureSnapshot(videoRef.current);
-      executeAttendanceSubmit();
+      executeAttendanceSubmit(currentProfile);
     }, 800);
   };
 
-  const executeAttendanceSubmit = async () => {
-    if (!matchedProfile) return;
+  const executeAttendanceSubmit = async (profileToSubmit: { name: string; division: string }) => {
+    if (!profileToSubmit) {
+      console.error('[executeAttendanceSubmit] Profile is missing!');
+      return;
+    }
     
+    console.log('[executeAttendanceSubmit] Starting API call for:', profileToSubmit.name);
+
     // Safety triple-check capture before camera stops
     if (videoRef.current && !photoRef.current) {
       photoRef.current = captureSnapshot(videoRef.current);
@@ -436,16 +450,19 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
         body: JSON.stringify({
           meetingId: params.meetingId,
           token,
-          name: matchedProfile.name,
-          division: matchedProfile.division,
+          name: profileToSubmit.name,
+          division: profileToSubmit.division,
           deviceId: deviceId,
           photo: photoRef.current || undefined,
         })
       });
 
       const data = await res.json();
+      console.log('[executeAttendanceSubmit] API Response:', res.status, data);
+
       if (res.ok) {
         setStatus(`Attendance recorded: ${data.status}`);
+        setMatchedProfile({ name: profileToSubmit.name, division: profileToSubmit.division, distance: 0 }); // Ensure it stays for UI
       } else {
         if (data.error && data.error.includes("already submitted")) setShowBreachAlert(true);
         else setError(data.error);
@@ -453,6 +470,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
         setScanning(false);
       }
     } catch (err) {
+      console.error('[executeAttendanceSubmit] Fetch error:', err);
       setError('Connection failed. Please check your internet.');
       setShowCamera(false);
       setScanning(false);
