@@ -63,6 +63,7 @@ export default function RegisterFace() {
       try {
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+          faceapi.nets.ssdMobilenetv1.loadFromUri('/models'),
           faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
           faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
         ]);
@@ -387,12 +388,11 @@ export default function RegisterFace() {
     setSubmitting(true);
     setDetectionStatus('Memproses foto...');
     setError(null);
-    setDuplicateFound(null); // Clear previous errors
-
-    try {
+    setDuplicateFound(null);      setDetectionStatus('Mendeteksi wajah (Deep Analysis)...');
+      
       const img = await faceapi.bufferToImage(file);
       const detection = await faceapi
-        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 }))
+        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
         .withFaceLandmarks()
         .withFaceDescriptor();
 
@@ -578,10 +578,10 @@ export default function RegisterFace() {
                   className="w-full h-full object-cover -scale-x-100"
                 />
 
-                {/* Face Bounding Box */}
+                {/* Futuristic AI Vision Frame */}
                 {faceBox && !capturing && (
                   <div
-                    className="absolute border-2 border-violet-400 rounded-lg transition-all duration-150 ease-out face-box-pulse pointer-events-none z-20"
+                    className="absolute transition-all duration-150 ease-out z-20 pointer-events-none"
                     style={{
                       left: `${faceBox.x}px`,
                       top: `${faceBox.y}px`,
@@ -589,13 +589,34 @@ export default function RegisterFace() {
                       height: `${faceBox.height}px`,
                     }}
                   >
-                    <div className="absolute -top-0.5 -left-0.5 w-4 h-4 border-t-2 border-l-2 border-violet-400 rounded-tl"></div>
-                    <div className="absolute -top-0.5 -right-0.5 w-4 h-4 border-t-2 border-r-2 border-violet-400 rounded-tr"></div>
-                    <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 border-b-2 border-l-2 border-violet-400 rounded-bl"></div>
-                    <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 border-b-2 border-r-2 border-violet-400 rounded-br"></div>
-                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-violet-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap shadow-lg">
-                      FACE {faceConfidence}%
+                    {/* Corner Brackets */}
+                    <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-violet-500 rounded-tl shadow-[0_0_15px_rgba(139,92,246,0.5)]"></div>
+                    <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-violet-500 rounded-tr shadow-[0_0_15px_rgba(139,92,246,0.5)]"></div>
+                    <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-violet-500 rounded-bl shadow-[0_0_15px_rgba(139,92,246,0.5)]"></div>
+                    <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-violet-500 rounded-br shadow-[0_0_15px_rgba(139,92,246,0.5)]"></div>
+                    
+                    {/* Scanning Line */}
+                    <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-violet-400 to-transparent animate-[scan_2s_infinite] shadow-[0_0_10px_rgba(139,92,246,0.8)]"></div>
+                    
+                    {/* AI Meta Labels */}
+                    <div className="absolute -top-8 left-0 flex items-center gap-2 animate-pulse">
+                      <div className="bg-violet-600 text-white text-[9px] font-black px-2 py-0.5 rounded shadow-lg uppercase">Status: Target Acquired</div>
+                      <div className="bg-black/50 backdrop-blur-sm text-violet-400 text-[8px] font-bold px-1.5 py-0.5 border border-violet-500/30 rounded uppercase tracking-tighter">Acc: {faceConfidence}%</div>
                     </div>
+                    
+                    <div className="absolute -bottom-8 right-0 text-violet-400 font-mono text-[8px] flex flex-col items-end opacity-70">
+                      <span>POS_X: {Math.round(faceBox.x)}</span>
+                      <span>POS_Y: {Math.round(faceBox.y)}</span>
+                    </div>
+
+                    <style jsx>{`
+                      @keyframes scan {
+                        0% { top: 0%; opacity: 0; }
+                        10% { opacity: 1; }
+                        90% { opacity: 1; }
+                        100% { top: 100%; opacity: 0; }
+                      }
+                    `}</style>
                   </div>
                 )}
 

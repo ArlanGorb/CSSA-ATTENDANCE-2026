@@ -496,7 +496,53 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
 
               <div className="relative w-full aspect-square rounded-2xl overflow-hidden bg-black mb-4 ring-2 ring-blue-500/50 shadow-2xl">
                 <video ref={videoRef} autoPlay playsInline muted className={`w-full h-full object-cover -scale-x-100 ${scanning ? 'filter sepia-[0.3] contrast-[1.5]' : ''}`} />
-                {faceBox && !scanning && <div className="absolute border-2 rounded-lg pointer-events-none z-20 border-green-400/70 shadow-[0_0_15px_rgba(74,222,128,0.3)]" style={{ left: `${faceBox.x}px`, top: `${faceBox.y}px`, width: `${faceBox.width}px`, height: `${faceBox.height}px` }} />}
+                {/* Futuristic AI Vision Frame */}
+                {faceBox && !scanning && (
+                  <div
+                    className="absolute transition-all duration-150 ease-out z-20 pointer-events-none"
+                    style={{
+                      left: `${faceBox.x}px`,
+                      top: `${faceBox.y}px`,
+                      width: `${faceBox.width}px`,
+                      height: `${faceBox.height}px`,
+                    }}
+                  >
+                    {/* Corner Brackets */}
+                    <div className={`absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 rounded-tl shadow-[0_0_15px_rgba(34,197,94,0.5)] ${matchedProfile ? 'border-emerald-500' : 'border-blue-500'}`}></div>
+                    <div className={`absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 rounded-tr shadow-[0_0_15px_rgba(34,197,94,0.5)] ${matchedProfile ? 'border-emerald-500' : 'border-blue-500'}`}></div>
+                    <div className={`absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 rounded-bl shadow-[0_0_15px_rgba(34,197,94,0.5)] ${matchedProfile ? 'border-emerald-500' : 'border-blue-500'}`}></div>
+                    <div className={`absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 rounded-br shadow-[0_0_15px_rgba(34,197,94,0.5)] ${matchedProfile ? 'border-emerald-500' : 'border-blue-500'}`}></div>
+                    
+                    {/* Scanning Line */}
+                    <div className={`absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-blue-400 to-transparent animate-[scan_1.5s_infinite] shadow-[0_0_10px_rgba(59,130,246,0.8)]`}></div>
+                    
+                    {/* AI Meta Labels */}
+                    <div className="absolute -top-8 left-0 flex items-center gap-2 animate-pulse">
+                      <div className={`text-white text-[9px] font-black px-2 py-0.5 rounded shadow-lg uppercase ${matchedProfile ? 'bg-emerald-600' : 'bg-blue-600'}`}>
+                        {matchedProfile ? 'ID_MATCHED' : 'SCANNING_ID...'}
+                      </div>
+                      <div className="bg-black/50 backdrop-blur-sm text-blue-400 text-[8px] font-bold px-1.5 py-0.5 border border-blue-500/30 rounded uppercase tracking-tighter">
+                        CON: {faceConfidence}%
+                      </div>
+                    </div>
+                    
+                    {/* Data Scan Stream */}
+                    <div className="absolute -right-4 top-0 h-full flex flex-col justify-around transition-opacity duration-300">
+                      {[1,2,3].map(i => (
+                        <div key={i} className="w-1.5 h-[1px] bg-blue-400 shadow-[0_0_5px_rgba(59,130,246,1)]"></div>
+                      ))}
+                    </div>
+
+                    <style jsx>{`
+                      @keyframes scan {
+                        0% { top: 0%; opacity: 0; }
+                        10% { opacity: 1; }
+                        90% { opacity: 1; }
+                        100% { top: 100%; opacity: 0; }
+                      }
+                    `}</style>
+                  </div>
+                )}
                 {scanning && <div className="absolute top-0 left-0 w-full h-2 bg-green-400/80 animate-scan-line z-20 shadow-[0_0_20px_#4ade80]"></div>}
                 {!scanning && !faceBox && <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40"><div className="w-56 h-72 border-2 border-dashed border-white rounded-[100px]"></div></div>}
               </div>

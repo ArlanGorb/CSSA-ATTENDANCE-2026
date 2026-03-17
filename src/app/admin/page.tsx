@@ -87,6 +87,7 @@ export default function AdminDashboard() {
       if (modelsLoaded) return;
       await Promise.all([
         faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+        faceapi.nets.ssdMobilenetv1.loadFromUri('/models'),
         faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
         faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
       ]);
@@ -364,7 +365,7 @@ export default function AdminDashboard() {
     try {
       const img = await faceapi.bufferToImage(file);
       const detection = await faceapi
-        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 }))
+        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
         .withFaceLandmarks()
         .withFaceDescriptor();
 
