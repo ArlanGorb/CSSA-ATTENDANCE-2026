@@ -21,7 +21,8 @@ const REQUIRED_CONSECUTIVE_MATCHES = 3;
 const TINY_FACE_INPUT_SIZE = 416; // Increased from 320 for more detail
 
 // Liveness Detection (Smile)
-const SMILE_THRESHOLD = 0.78; // Ratio of mouth width to eye distance
+// Liveness Detection (Smile)
+const SMILE_THRESHOLD = 0.74; // Lowered for easier triggering
 
 // Smile Score calculation: Mouth width / Eye distance
 function computeSmileScore(landmarks: faceapi.Point[]): number {
@@ -94,6 +95,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   // Liveness (Smile) States
   const [livenessVerified, setLivenessVerified] = useState(false);
   const [neutralFaceDetected, setNeutralFaceDetected] = useState(false); 
+  const [smileScore, setSmileScore] = useState(0); 
   const [photoCaptured, setPhotoCaptured] = useState(false);
 
   // Identity Stability
@@ -238,14 +240,15 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
 
             // Smile detection for liveness
             const landmarks = fullDetection.landmarks.positions;
-            const smileScore = computeSmileScore(landmarks);
+            const currentScore = computeSmileScore(landmarks);
+            setSmileScore(currentScore);
 
             // State-based liveness: Must see neutral face first, then smile
-            if (smileScore < 0.74) {
+            if (currentScore < 0.70) {
               setNeutralFaceDetected(true);
             }
 
-            if (neutralFaceDetected && smileScore > SMILE_THRESHOLD) {
+            if (neutralFaceDetected && currentScore > SMILE_THRESHOLD) {
               setLivenessVerified(true);
             }
 
@@ -499,7 +502,8 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
               {faceDetected && (
                 <div className={`w-full mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-300 ${livenessVerified ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400' : 'bg-slate-500/10 border border-slate-500/30 text-slate-400'}`}>
                   {livenessVerified ? <ShieldCheck size={14} /> : <Loader2 size={14} className="animate-spin" />}
-                  <span className="flex-1">{livenessVerified ? 'LIVENESS TERVERIFIKASI' : 'Tersenyum lebar untuk konfirmasi'}</span>
+                  <span className="flex-1 text-[10px] sm:text-xs tracking-tighter sm:tracking-normal">{livenessVerified ? 'LIVENESS TERVERIFIKASI' : 'Tersenyum lebar untuk konfirmasi'}</span>
+                  {!livenessVerified && <span className="text-[10px] opacity-60 font-mono">{(smileScore * 10).toFixed(1)}/{(SMILE_THRESHOLD * 10).toFixed(1)}</span>}
                 </div>
               )}
 
