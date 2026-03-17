@@ -11,8 +11,8 @@ const DIVISIONS = [
 
 const CAPTURE_COUNT = 10; // Increased from 5 for higher accuracy
 const CAPTURE_INTERVAL_MS = 600; // Time between captures
-const FACE_SCORE_THRESHOLD = 0.65; // Raised from 0.5
-const FACE_MATCH_THRESHOLD = 0.38; // Raised from 0.40 (Stricter duplicate check)
+const FACE_SCORE_THRESHOLD = 0.55; 
+const FACE_MATCH_THRESHOLD = 0.45; // Consistent with attendance page
 
 type FaceProfile = {
   id: string;
@@ -171,15 +171,15 @@ export default function RegisterFace() {
 
       try {
         // We use full detection (landmarks + descriptor) for duplicate check
-        const detection = await faceapi
-          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: FACE_SCORE_THRESHOLD }))
+        const fullDetection = await faceapi
+          .detectSingleFace(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 }))
           .withFaceLandmarks()
           .withFaceDescriptor();
 
-        if (detection) {
+        if (fullDetection) {
           const videoWidth = videoRef.current.videoWidth;
           const videoHeight = videoRef.current.videoHeight;
-          const faceArea = (detection.detection.box.width * detection.detection.box.height) / (videoWidth * videoHeight);
+          const faceArea = (fullDetection.detection.box.width * fullDetection.detection.box.height) / (videoWidth * videoHeight);
 
           if (faceArea < 0.08) {
             setDetectionStatus('Dekatkan wajah ke kamera');
@@ -190,12 +190,10 @@ export default function RegisterFace() {
             // DUPLICATE FACE CHECK
             if (labeledDescriptors.current.length > 0) {
               const matcher = new faceapi.FaceMatcher(labeledDescriptors.current, FACE_MATCH_THRESHOLD);
-              const bestMatch = matcher.findBestMatch(detection.descriptor);
+              const bestMatch = matcher.findBestMatch(fullDetection.descriptor);
               
               if (bestMatch.label !== 'unknown') {
                 const [dName, dDiv] = bestMatch.label.split('|||');
-                // Only flag if it's NOT the same person being updated (optional logic)
-                // For safety, we block any existing face from registering a new name
                 setDuplicateFound({ name: dName, division: dDiv });
                 setDetectionStatus('WAJAH TERDAFTAR');
               } else {
@@ -204,7 +202,7 @@ export default function RegisterFace() {
             }
 
             faceConfirmCount.current++;
-            setFaceConfidence(Math.round(detection.detection.score * 100));
+            setFaceConfidence(Math.round(fullDetection.detection.score * 100));
 
             const displayWidth = videoRef.current.clientWidth;
             const displayHeight = videoRef.current.clientHeight;
@@ -212,10 +210,10 @@ export default function RegisterFace() {
             const scaleY = displayHeight / videoHeight;
 
             setFaceBox({
-              x: displayWidth - (detection.detection.box.x * scaleX) - (detection.detection.box.width * scaleX),
-              y: detection.detection.box.y * scaleY,
-              width: detection.detection.box.width * scaleX,
-              height: detection.detection.box.height * scaleY,
+              x: displayWidth - (fullDetection.detection.box.x * scaleX) - (fullDetection.detection.box.width * scaleX),
+              y: fullDetection.detection.box.y * scaleY,
+              width: fullDetection.detection.box.width * scaleX,
+              height: fullDetection.detection.box.height * scaleY,
             });
 
             if (faceConfirmCount.current >= 5) {
@@ -264,8 +262,9 @@ export default function RegisterFace() {
       if (!videoRef.current) break;
 
       try {
+        // ULTRA-PRECISION: Use SsdMobilenetv1 for all registration samples
         const detection = await faceapi
-          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: FACE_SCORE_THRESHOLD }))
+          .detectSingleFace(videoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }))
           .withFaceLandmarks()
           .withFaceDescriptor();
 

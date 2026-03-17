@@ -13,11 +13,12 @@ const DIVISIONS = [
 
 // Face Detection Configuration
 const FACE_DETECTION_INTERVAL_MS = 250; 
-const FACE_SCORE_THRESHOLD = 0.7; // Raised from 0.6
-const FACE_CONFIRM_FRAMES = 8; // Stable frames required
-const FACE_MIN_SIZE_RATIO = 0.15; // Raised from 0.12 (User must be closer)
-const FACE_MATCH_THRESHOLD = 0.38; // Drastically stricter (was 0.48)
-const REQUIRED_CONSECUTIVE_MATCHES = 3; // New stability check
+const FACE_SCORE_THRESHOLD = 0.55; // Lowered for better detection in various lights
+const FACE_CONFIRM_FRAMES = 8; 
+const FACE_MIN_SIZE_RATIO = 0.15; 
+const FACE_MATCH_THRESHOLD = 0.45; // Adjusted for better reliability (was 0.38)
+const REQUIRED_CONSECUTIVE_MATCHES = 3; 
+const TINY_FACE_INPUT_SIZE = 416; // Increased from 320 for more detail
 
 // Liveness Detection (Mouth Open)
 const MAR_THRESHOLD = 0.5; // Mouth Aspect Ratio above this = mouth open
@@ -103,6 +104,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
       try {
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+          faceapi.nets.ssdMobilenetv1.loadFromUri('/models'), // Loading high-precision model
           faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
           faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
         ]);
@@ -199,7 +201,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
 
       try {
         const fullDetection = await faceapi
-          .detectSingleFace(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.6 }))
+          .detectSingleFace(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: TINY_FACE_INPUT_SIZE, scoreThreshold: 0.5 }))
           .withFaceLandmarks();
 
         if (fullDetection) {
@@ -252,8 +254,9 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
               // Only attempt recognition if not already matched and face is stable
               if (recognitionCounter % 2 === 0 && labeledDescriptors.current.length > 0 && !matchedProfile) {
                 try {
+                  // Precision Recognition using SsdMobilenetv1
                   const recDetection = await faceapi
-                    .detectSingleFace(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: FACE_SCORE_THRESHOLD }))
+                    .detectSingleFace(videoRef.current!, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }))
                     .withFaceLandmarks()
                     .withFaceDescriptor();
 
