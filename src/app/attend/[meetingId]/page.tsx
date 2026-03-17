@@ -61,6 +61,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
   const [status, setStatus] = useState<string | null>(null);
+  const [attendanceResult, setAttendanceResult] = useState<{name: string, division: string, status: string} | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
@@ -461,8 +462,13 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
       console.log('[executeAttendanceSubmit] API Response:', res.status, data);
 
       if (res.ok) {
+        console.log('[executeAttendanceSubmit] Success! Updating state.');
+        setAttendanceResult({
+          name: profileToSubmit.name,
+          division: profileToSubmit.division,
+          status: data.status || 'Hadir'
+        });
         setStatus(`Attendance recorded: ${data.status}`);
-        setMatchedProfile({ name: profileToSubmit.name, division: profileToSubmit.division, distance: 0 }); // Ensure it stays for UI
       } else {
         if (data.error && data.error.includes("already submitted")) setShowBreachAlert(true);
         else setError(data.error);
@@ -476,6 +482,28 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
       setScanning(false);
     } finally { setLoading(false); }
   };
+
+  if (attendanceResult || status) {
+    const displayName = attendanceResult?.name || matchedProfile?.name || 'User';
+    const displayStatus = attendanceResult?.status || status || 'Recorded';
+
+    return (
+      <div className="fixed inset-0 z-[100] bg-gradient-to-br from-green-900 via-emerald-900 to-teal-900 flex flex-col items-center justify-center text-white text-center p-6">
+        <div className="animate-bounce mb-8">
+          <CheckCircle size={100} className="text-green-400 drop-shadow-[0_0_20px_rgba(74,222,128,0.5)]" />
+        </div>
+        <h1 className="text-5xl font-black mb-4 tracking-tight">AKSES DITERIMA</h1>
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 max-w-sm w-full shadow-2xl">
+          <p className="text-3xl font-bold text-white mb-2">{displayStatus}</p>
+          <div className="h-px bg-white/20 w-full mb-4"></div>
+          <p className="text-white/70 text-sm uppercase tracking-widest font-bold mb-1">Identitas Terverifikasi</p>
+          <p className="text-2xl font-bold text-emerald-300">{displayName}</p>
+          <p className="text-white/50 text-xs mt-1">{attendanceResult?.division || matchedProfile?.division || ''}</p>
+        </div>
+        <p className="mt-12 text-emerald-400/60 text-sm tracking-[0.3em] font-medium animate-pulse uppercase">Anda boleh menutup jendela ini</p>
+      </div>
+    );
+  }
 
   if (showSplash) {
     return (
@@ -508,9 +536,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
 
   if (showBreachAlert) return <div className="fixed inset-0 z-50 bg-red-950 flex flex-col items-center justify-center text-white overflow-hidden text-center"><div className="absolute inset-0 bg-red-600/20 animate-[pulse_0.5s_infinite]"></div><AlertOctagon size={100} className="text-red-500 mb-6 animate-bounce" /><h1 className="text-6xl font-black tracking-widest text-red-500 mb-2 uppercase">PELANGGARAN KEAMANAN</h1><p className="text-xl text-red-300 font-mono tracking-wide uppercase max-w-md bg-black/50 p-4 border border-red-500/50 mt-4 rounded-lg">Beberapa absensi terdeteksi <br/> dari satu sidik jari perangkat.</p><div className="mt-12 text-sm text-red-400 font-mono flex items-center gap-2 opacity-70"><span className="w-2 h-2 bg-red-500 rounded-full animate-ping"></span>KEJADIAN DICATAT [ID_PERANGKAT: {deviceId.substring(0,8)}...]</div></div>;
 
-  if (status) {
-    return <div className="fixed inset-0 z-50 bg-gradient-to-br from-green-900 via-emerald-900 to-teal-900 flex flex-col items-center justify-center text-white text-center"><CheckCircle size={80} className="text-green-400 mb-8" /><h1 className="text-5xl font-bold mb-4">AKSES DITERIMA</h1><div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl p-6 max-w-xs w-full"><p className="text-2xl font-bold text-white">{status}</p><p className="text-white/60 text-xs mt-2">Terverifikasi via Face AI sebagai <span className="text-emerald-300 font-bold">{matchedProfile?.name || 'User'}</span></p></div><p className="mt-12 text-emerald-400/60 text-sm tracking-[0.2em]">Anda boleh menutup jendela ini</p></div>;
-  }
+  if (status) return null; 
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
