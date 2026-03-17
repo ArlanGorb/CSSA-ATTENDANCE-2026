@@ -3,7 +3,8 @@ import { useState, useEffect } from 'react';
 
 import { supabase } from '@/lib/supabase';
 import { QRCodeSVG } from 'qrcode.react';
-import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, Archive, RotateCcw, Terminal, ShieldAlert, Image as ImageIcon, Camera, Menu, UserCircle, Search, Upload, Loader2, Sparkles } from 'lucide-react';
+import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, Archive, RotateCcw, Terminal, ShieldAlert, Image as ImageIcon, Camera, Menu, UserCircle, Search, Upload, Loader2, Sparkles, BarChart2 } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 import * as faceapi from 'face-api.js';
 
 type FaceProfile = {
@@ -43,9 +44,10 @@ export default function AdminDashboard() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // New Management view states
-  const [activeView, setActiveView] = useState<'meetings' | 'students'>('meetings');
+  const [activeView, setActiveView] = useState<'meetings' | 'students' | 'analytics'>('meetings');
   const [allStudents, setAllStudents] = useState<FaceProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [allAttendances, setAllAttendances] = useState<any[]>([]);
   
   // Face Training states
   const [modelsLoaded, setModelsLoaded] = useState(false);
@@ -86,6 +88,7 @@ export default function AdminDashboard() {
     fetchMeetings();
     loadModels();
     fetchAllStudents();
+    fetchAllAttendances();
   }, [showArchived]); // Re-fetch on toggle
 
   const loadModels = async () => {
@@ -113,6 +116,68 @@ export default function AdminDashboard() {
     } catch (err) {
       console.error("Error fetching students:", err);
     }
+  };
+
+  const fetchAllAttendances = async () => {
+    try {
+      // Fetch all attendance records with meeting info
+      const { data, error } = await supabase
+        .from('attendance')
+        .select(`
+          *,
+          meetings (
+            title,
+            date
+          )
+        `);
+      
+      if (data) setAllAttendances(data);
+      if (error) throw error;
+    } catch (err) {
+      console.error("Error fetching all attendances:", err);
+    }
+  };
+
+  const getTrendData = () => {
+    const meetingMap: Record<string, number> = {};
+    allAttendances.forEach((att: any) => {
+      const title = att.meetings?.title || 'Unknown';
+      meetingMap[title] = (meetingMap[title] || 0) + 1;
+    });
+
+    return Object.keys(meetingMap).map(key => ({
+      name: key,
+      Hadir: meetingMap[key]
+    })).slice(-10);
+  };
+
+  const getDivisionData = () => {
+    const divMap: Record<string, number> = {};
+    DIVISIONS.forEach(div => divMap[div] = 0);
+    
+    allAttendances.forEach((att: any) => {
+      if (att.division && divMap[att.division] !== undefined) {
+        divMap[att.division]++;
+      }
+    });
+
+    return Object.keys(divMap).map(key => ({
+      name: key,
+      Count: divMap[key]
+    })).sort((a: any, b: any) => b.Count - a.Count);
+  };
+
+  const getLeaderboard = () => {
+    const studentMap: Record<string, { name: string, division: string, count: number }> = {};
+    
+    allAttendances.forEach((att: any) => {
+      if (!studentMap[att.name]) {
+        studentMap[att.name] = { name: att.name, division: att.division, count: 0 };
+      }
+      studentMap[att.name].count++;
+    });
+
+    return Object.values(studentMap).sort((a: any, b: any) => b.count - a.count);
   };
 
   useEffect(() => {
@@ -789,6 +854,132 @@ export default function AdminDashboard() {
                       </button>
                     </div>
                   </form>
+                </div>
+              </div>
+            )}
+
+            {activeView === 'analytics' && (
+              <div className="space-y-6 animate-fade-in-up">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[
+                    { label: 'Total Sessions', value: meetings.length, icon: Clock, color: 'text-blue-600', bg: 'bg-blue-50' },
+                    { label: 'Total Students', value: allStudents.length, icon: Users, color: 'text-violet-600', bg: 'bg-violet-50' },
+                    { 
+                      label: 'Avg Attendance', 
+                      value: meetings.length > 0 ? (allAttendances.length / meetings.length).toFixed(1) : 0, 
+                      icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' 
+                    },
+                    { 
+                      label: 'Latest Attendance', 
+                      value: attendances.length, 
+                      icon: Sparkles, color: 'text-amber-600', bg: 'bg-amber-50' 
+                    },
+                  ].map((stat, i) => (
+                    <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                      <div className="flex items-center gap-4">
+                        <div className={`p-3 rounded-xl ${stat.bg} ${stat.color}`}>
+                          <stat.icon size={24} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-slate-500">{stat.label}</p>
+                          <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  {/* Attendance Trend Chart */}
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm min-h-[400px]">
+                    <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                       <BarChart2 size={20} className="text-blue-600" />
+                       Tren Kehadiran
+                    </h3>
+                    <div className="h-[300px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={getTrendData()}>
+                          <defs>
+                            <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10}} dy={10} />
+                          <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10}} />
+                          <Tooltip 
+                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                          />
+                          <Area type="monotone" dataKey="Hadir" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Division Chart */}
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm min-h-[400px]">
+                    <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                       <Users size={20} className="text-violet-600" />
+                       Partisipasi per Divisi
+                    </h3>
+                    <div className="h-[300px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={getDivisionData()} layout="vertical">
+                          <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                          <XAxis type="number" hide />
+                          <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10}} width={100} />
+                          <Tooltip 
+                            cursor={{fill: '#f8fafc'}}
+                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                          />
+                          <Bar dataKey="Count" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={20} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                    <h3 className="font-bold text-slate-800">Leaderboard Kehadiran</h3>
+                    <span className="text-xs font-medium text-slate-500">Top 10 Mahasiswa Paling Aktif</span>
+                  </div>
+                  <div className="p-0 overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-widest">
+                        <tr>
+                          <th className="px-6 py-3 text-left">Ranking</th>
+                          <th className="px-6 py-3 text-left">Nama</th>
+                          <th className="px-6 py-3 text-left">Divisi</th>
+                          <th className="px-6 py-3 text-center">Total Hadir</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {getLeaderboard().slice(0, 10).map((item, i) => (
+                          <tr key={i} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-6 py-4">
+                              <span className={`w-6 h-6 rounded-md flex items-center justify-center font-bold text-xs ${
+                                i === 0 ? 'bg-amber-100 text-amber-700' :
+                                i === 1 ? 'bg-slate-100 text-slate-700' :
+                                i === 2 ? 'bg-orange-100 text-orange-700' :
+                                'text-slate-400'
+                              }`}>
+                                {i + 1}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 font-semibold text-slate-800">{item.name}</td>
+                            <td className="px-6 py-4 text-slate-500">{item.division}</td>
+                            <td className="px-6 py-4 text-center">
+                              <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full font-bold">
+                                {item.count}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             )}
