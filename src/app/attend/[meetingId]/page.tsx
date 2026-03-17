@@ -12,11 +12,12 @@ const DIVISIONS = [
 ];
 
 // Face Detection Configuration
-const FACE_DETECTION_INTERVAL_MS = 300;
-const FACE_SCORE_THRESHOLD = 0.6; // Higher threshold for detection confidence
-const FACE_CONFIRM_FRAMES = 10; // More frames for stability (approx 3 seconds)
-const FACE_MIN_SIZE_RATIO = 0.12; // Face must be larger/closer (at least 12% of screen)
-const FACE_MATCH_THRESHOLD = 0.48; // Balanced for recognition reliability
+const FACE_DETECTION_INTERVAL_MS = 250; 
+const FACE_SCORE_THRESHOLD = 0.7; // Raised from 0.6
+const FACE_CONFIRM_FRAMES = 8; // Stable frames required
+const FACE_MIN_SIZE_RATIO = 0.15; // Raised from 0.12 (User must be closer)
+const FACE_MATCH_THRESHOLD = 0.38; // Drastically stricter (was 0.48)
+const REQUIRED_CONSECUTIVE_MATCHES = 3; // New stability check
 
 // Liveness Detection (Mouth Open)
 const MAR_THRESHOLD = 0.5; // Mouth Aspect Ratio above this = mouth open
@@ -89,7 +90,12 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
 
   // Liveness (Mouth Open) States
   const [livenessVerified, setLivenessVerified] = useState(false);
+  const [mouthClosedDetected, setMouthClosedDetected] = useState(false); // New liveness state
   const [photoCaptured, setPhotoCaptured] = useState(false);
+
+  // Identity Stability
+  const consecutiveMatchCount = useRef(0);
+  const lastMatchedName = useRef<string | null>(null);
 
   // Load face-api.js models on mount
   useEffect(() => {
@@ -230,7 +236,12 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
             const mouthInner = landmarks.slice(60, 68);
             const MAR = computeMAR(mouthInner);
 
-            if (MAR > MAR_THRESHOLD) {
+            // State-based liveness: Must see closed mouth first
+            if (MAR < 0.2) {
+              setMouthClosedDetected(true);
+            }
+
+            if (mouthClosedDetected && MAR > MAR_THRESHOLD) {
               setLivenessVerified(true);
             }
 
@@ -239,20 +250,36 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
               recognitionCounter++;
               
               // Only attempt recognition if not already matched and face is stable
-              if (recognitionCounter % 3 === 0 && labeledDescriptors.current.length > 0 && !matchedProfile) {
+              if (recognitionCounter % 2 === 0 && labeledDescriptors.current.length > 0 && !matchedProfile) {
                 try {
                   const recDetection = await faceapi
-                    .detectSingleFace(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.6 }))
+                    .detectSingleFace(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: FACE_SCORE_THRESHOLD }))
                     .withFaceLandmarks()
                     .withFaceDescriptor();
 
                   if (recDetection) {
                     const matcher = new faceapi.FaceMatcher(labeledDescriptors.current, FACE_MATCH_THRESHOLD);
                     const match = matcher.findBestMatch(recDetection.descriptor);
+                    
                     if (match.label !== 'unknown') {
                       const [matchName, matchDivision] = match.label.split('|||');
-                      setMatchedProfile({ name: matchName, division: matchDivision, distance: match.distance });
+                      
+                      // Identity Stability Check (Consecutive Matches)
+                      if (lastMatchedName.current === matchName) {
+                        consecutiveMatchCount.current++;
+                      } else {
+                        consecutiveMatchCount.current = 1;
+                        lastMatchedName.current = matchName;
+                      }
+
+                      if (consecutiveMatchCount.current >= REQUIRED_CONSECUTIVE_MATCHES) {
+                        setMatchedProfile({ name: matchName, division: matchDivision, distance: match.distance });
+                      } else {
+                        setDetectionStatus(`Verifying Identity... (${consecutiveMatchCount.current}/${REQUIRED_CONSECUTIVE_MATCHES})`);
+                      }
                     } else {
+                      consecutiveMatchCount.current = 0;
+                      lastMatchedName.current = null;
                       setMatchAttempted(true);
                     }
                   }
@@ -261,14 +288,16 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
                 setMatchAttempted(true);
               }
 
-              if (!livenessVerified) {
-                setDetectionStatus(`Buka mulut Anda untuk konfirmasi`);
+              if (!mouthClosedDetected) {
+                setDetectionStatus('Tutup mulut sebentar...');
+              } else if (!livenessVerified) {
+                setDetectionStatus(`Buka mulut lebar untuk konfirmasi liveness`);
               } else if (matchedProfile) {
-                setDetectionStatus(`Teridentifikasi: ${matchedProfile.name}`);
+                setDetectionStatus(`Terverifikasi: ${matchedProfile.name}`);
               } else if (!matchedProfile && matchAttempted) {
-                setDetectionStatus('IDENTITAS TIDAK DIKENAL — WAJIB REGISTRASI');
+                setDetectionStatus('IDENTITAS TIDAK DIKENAL');
               } else {
-                setDetectionStatus('Memverifikasi identitas...');
+                setDetectionStatus('Verifying stable profile...');
               }
             } else {
               setDetectionStatus(`STABILISASI... (${faceConfirmCount.current}/${FACE_CONFIRM_FRAMES})`);
@@ -277,6 +306,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
         } else {
           noFaceCount.current++;
           faceConfirmCount.current = Math.max(0, faceConfirmCount.current - 1);
+          consecutiveMatchCount.current = 0; // Reset stability on face loss
           setFaceBox(null);
           if (noFaceCount.current > 3) {
             setFaceDetected(false);

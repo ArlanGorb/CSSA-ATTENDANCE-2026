@@ -11,8 +11,8 @@ const DIVISIONS = [
 
 const CAPTURE_COUNT = 10; // Increased from 5 for higher accuracy
 const CAPTURE_INTERVAL_MS = 600; // Time between captures
-const FACE_SCORE_THRESHOLD = 0.5;
-const FACE_MATCH_THRESHOLD = 0.40; // Stricter = Lower chance of false duplicate
+const FACE_SCORE_THRESHOLD = 0.65; // Raised from 0.5
+const FACE_MATCH_THRESHOLD = 0.38; // Raised from 0.40 (Stricter duplicate check)
 
 type FaceProfile = {
   id: string;
@@ -397,7 +397,7 @@ export default function RegisterFace() {
     try {
       const img = await faceapi.bufferToImage(file);
       const detection = await faceapi
-        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.7 })) // Raised from 0.5
         .withFaceLandmarks()
         .withFaceDescriptor();
 

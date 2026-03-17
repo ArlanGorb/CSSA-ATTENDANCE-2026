@@ -371,7 +371,7 @@ export default function AdminDashboard() {
     try {
       const img = await faceapi.bufferToImage(file);
       const detection = await faceapi
-        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.7 })) // Increased from 0.5
         .withFaceLandmarks()
         .withFaceDescriptor();
 
