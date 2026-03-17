@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Camera, XCircle, CheckCircle, AlertOctagon, ScanLine, ShieldCheck, ShieldOff, UserPlus, Loader2, ArrowLeft, Sparkles, ExternalLink } from 'lucide-react';
+import { Camera, XCircle, CheckCircle, AlertOctagon, ScanLine, ShieldCheck, ShieldOff, UserPlus, Loader2, ArrowLeft, Sparkles, ExternalLink, Image as ImageIcon } from 'lucide-react';
 import * as faceapi from 'face-api.js';
 import Link from 'next/link';
 
@@ -18,7 +18,7 @@ type FaceProfile = {
   id: string;
   name: string;
   division: string;
-  face_descriptor: number[];
+  face_descriptor: number[] | number[][];
 };
 
 export default function RegisterFace() {
@@ -86,11 +86,17 @@ export default function RegisterFace() {
       if (data.profiles && data.profiles.length > 0) {
         setFaceProfiles(data.profiles);
         const labeled = data.profiles
-          .filter((p: FaceProfile) => p.face_descriptor && p.face_descriptor.length === 128)
+          .filter((p: FaceProfile) => p.face_descriptor && (p.face_descriptor as any).length > 0)
           .map((p: FaceProfile) => {
+            // Handle both legacy (flat array) and new (array of arrays) format
+            const rawDescriptors = p.face_descriptor;
+            const descriptors: Float32Array[] = Array.isArray((rawDescriptors as any)[0])
+              ? (rawDescriptors as number[][]).map((d: any) => new Float32Array(d))
+              : [new Float32Array(rawDescriptors as number[])];
+
             return new faceapi.LabeledFaceDescriptors(
               `${p.name}|||${p.division}`,
-              [new Float32Array(p.face_descriptor)]
+              descriptors
             );
           });
         labeledDescriptors.current = labeled;
@@ -310,19 +316,27 @@ export default function RegisterFace() {
     }
   };
 
-  const submitFaceProfile = async (descriptors: Float32Array[]) => {
+  const submitFaceProfile = async (descriptors: Float32Array[], isTraining = false) => {
     setSubmitting(true);
-    setDetectionStatus('Menyimpan profil wajah...');
+    setDetectionStatus(isTraining ? 'Menambahkan sampel pelatihan...' : 'Menyimpan profil wajah...');
 
     try {
-      // Average the descriptors
-      const avgDescriptor = new Float32Array(128);
-      for (let i = 0; i < 128; i++) {
-        let sum = 0;
-        for (const desc of descriptors) {
-          sum += desc[i];
+      let payloadDescriptors: any;
+      
+      if (isTraining) {
+        // Training sample from photo - we send the single descriptor as an array
+        payloadDescriptors = descriptors.map(d => Array.from(d));
+      } else {
+        // Average the descriptors
+        const avgDescriptor = new Float32Array(128);
+        for (let i = 0; i < 128; i++) {
+          let sum = 0;
+          for (const desc of descriptors) {
+            sum += desc[i];
+          }
+          avgDescriptor[i] = sum / descriptors.length;
         }
-        avgDescriptor[i] = sum / descriptors.length;
+        payloadDescriptors = Array.from(avgDescriptor);
       }
 
       const res = await fetch('/api/face-profiles', {
@@ -331,7 +345,8 @@ export default function RegisterFace() {
         body: JSON.stringify({
           name: name.trim(),
           division,
-          faceDescriptor: Array.from(avgDescriptor),
+          faceDescriptor: payloadDescriptors,
+          action: isTraining ? 'append' : undefined
         }),
       });
 
@@ -339,11 +354,14 @@ export default function RegisterFace() {
 
       if (res.ok) {
         setSuccess(true);
-        setResultMessage(data.updated
-          ? `Profil wajah "${name}" telah diperbarui!`
-          : `Profil wajah "${name}" berhasil didaftarkan!`
+        setResultMessage(isTraining 
+          ? `Sampel pelatihan untuk "${name}" berhasil ditambahkan!`
+          : data.updated
+            ? `Profil wajah "${name}" telah diperbarui!`
+            : `Profil wajah "${name}" berhasil didaftarkan!`
         );
         stopCamera();
+        fetchProfiles(); // Refresh local matcher with most recent data
       } else {
         if (data.isDuplicate && data.name) {
           setDuplicateFound({ name: data.name, division: data.division });
@@ -351,13 +369,55 @@ export default function RegisterFace() {
           setError(data.error || 'Gagal menyimpan profil wajah.');
         }
         setCapturing(false);
-        startFaceDetection();
+        if (showCamera) startFaceDetection();
       }
     } catch (err) {
       setError('Kesalahan jaringan. Silakan coba lagi.');
       setCapturing(false);
-      startFaceDetection();
+      if (showCamera) startFaceDetection();
     } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !modelsLoaded) return;
+
+    setSubmitting(true);
+    setDetectionStatus('Memproses foto...');
+    setError(null);
+    setDuplicateFound(null); // Clear previous errors
+
+    try {
+      const img = await faceapi.bufferToImage(file);
+      const detection = await faceapi
+        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 }))
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (!detection) {
+        setError('Wajah tidak terdeteksi dalam foto. Gunakan foto yang lebih jelas.');
+        setSubmitting(false);
+        return;
+      }
+
+      // Check if this person is already registered as someone else
+      if (labeledDescriptors.current.length > 0) {
+        const matcher = new faceapi.FaceMatcher(labeledDescriptors.current, FACE_MATCH_THRESHOLD);
+        const match = matcher.findBestMatch(detection.descriptor);
+        if (match.label !== 'unknown' && !match.label.startsWith(name.trim())) {
+          const [dName, dDiv] = match.label.split('|||');
+          setDuplicateFound({ name: dName, division: dDiv });
+          setSubmitting(false);
+          return;
+        }
+      }
+
+      await submitFaceProfile([detection.descriptor], true);
+    } catch (err) {
+      console.error('[FaceAPI] Photo processing error:', err);
+      setError('Gagal memproses foto. Pastikan format gambar benar.');
       setSubmitting(false);
     }
   };
@@ -700,11 +760,16 @@ export default function RegisterFace() {
 
                 <button
                   onClick={startCamera}
-                  disabled={!modelsLoaded || !name.trim() || !division}
+                  disabled={!modelsLoaded || !name.trim() || !division || submitting}
                   type="button"
                   className="w-full bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-violet-500/20 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 mt-2"
                 >
-                  {!modelsLoaded ? (
+                  {submitting ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>{detectionStatus}</span>
+                    </>
+                  ) : !modelsLoaded ? (
                     <>
                       <Loader2 size={18} className="animate-spin" />
                       <span>Memuat AI...</span>
@@ -712,10 +777,40 @@ export default function RegisterFace() {
                   ) : (
                     <>
                       <Camera size={18} />
-                      <span>Buka Kamera</span>
+                      <span>Buka Kamera (Video)</span>
                     </>
                   )}
                 </button>
+
+                <div className="relative mt-4">
+                  <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                    <div className="w-full border-t border-white/5"></div>
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase tracking-widest font-bold">
+                    <span className="bg-slate-900 border border-white/10 px-4 py-1 rounded-full text-slate-500">Atau</span>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <input
+                    type="file"
+                    id="photo-upload"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    disabled={!modelsLoaded || !name.trim() || !division || submitting}
+                  />
+                  <label
+                    htmlFor="photo-upload"
+                    className={`w-full bg-white/5 border border-white/10 hover:bg-white/10 text-white font-bold py-4 rounded-xl transition-all transform hover:scale-[1.02] active:scale-[0.98] flex justify-center items-center gap-2 cursor-pointer ${(!modelsLoaded || !name.trim() || !division || submitting) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <ImageIcon size={18} className="text-violet-400" />
+                    <span>Latih Wajah via Foto</span>
+                  </label>
+                  <p className="text-[10px] text-center text-slate-500 mt-2 italic px-4">
+                    Gunakan foto wajah yang jelas dan menghadap ke depan untuk meningkatkan akurasi.
+                  </p>
+                </div>
               </div>
 
               {/* Navigation */}

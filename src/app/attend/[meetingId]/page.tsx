@@ -49,7 +49,7 @@ type FaceProfile = {
   id: string;
   name: string;
   division: string;
-  face_descriptor: number[];
+  face_descriptor: number[] | number[][];
 };
 
 export default function MemberAttendance({ params }: { params: { meetingId: string } }) {
@@ -122,11 +122,17 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
 
           // Build labeled descriptors for face matching
           const labeled = data.profiles
-            .filter((p: FaceProfile) => p.face_descriptor && p.face_descriptor.length === 128)
+            .filter((p: FaceProfile) => p.face_descriptor && (p.face_descriptor as any).length > 0)
             .map((p: FaceProfile) => {
+              // Handle both legacy (flat array) and new (array of arrays) format
+              const rawDescriptors = p.face_descriptor;
+              const descriptors: Float32Array[] = Array.isArray((rawDescriptors as any)[0])
+                ? (rawDescriptors as number[][]).map((d: any) => new Float32Array(d))
+                : [new Float32Array(rawDescriptors as number[])];
+
               return new faceapi.LabeledFaceDescriptors(
                 `${p.name}|||${p.division}`,
-                [new Float32Array(p.face_descriptor)]
+                descriptors
               );
             });
           labeledDescriptors.current = labeled;
