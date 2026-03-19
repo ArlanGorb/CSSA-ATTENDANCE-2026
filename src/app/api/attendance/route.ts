@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { differenceInMinutes, parseISO, set } from 'date-fns';
+import { differenceInMinutes, parseISO, set, format } from 'date-fns';
 import { withRateLimit, getClientIdentifier } from '@/lib/rate-limit';
+import { sendAttendanceEmail } from '@/lib/email';
 
 export async function POST(request: Request) {
   // Apply rate limiting
@@ -13,7 +14,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { meetingId, token, name, division, deviceId, photo } = body;
+    const { meetingId, token, name, division, deviceId, photo, manual, email } = body;
 
     // 1. Verify Meeting & Token
     const { data: meeting, error: meetingError } = await supabase
@@ -26,33 +27,36 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
     }
 
-    // Check token validity
-    if (meeting.qr_token !== token) {
-      return NextResponse.json({ error: 'Invalid QR Token. Please rescan.' }, { status: 400 });
-    }
+    // Skip token validation for manual attendance
+    if (!manual) {
+      // Check token validity
+      if (meeting.qr_token !== token) {
+        return NextResponse.json({ error: 'Invalid QR Token. Please rescan.' }, { status: 400 });
+      }
 
-    // SERVER-SIDE: Check token expiry with timezone awareness
-    const now = new Date();
-    const expiryDate = new Date(meeting.qr_expiry);
-    
-    // Add 7 hours for WIB timezone if expiry is stored in UTC
-    const expiryWIB = new Date(expiryDate.getTime() + (7 * 60 * 60 * 1000));
-    
-    if (now > expiryWIB) {
-      // Auto-refresh token if expired
-      const newToken = crypto.randomUUID();
-      const newExpiry = new Date(Date.now() + (5 * 60 * 1000)); // 5 minutes
-      
-      await supabase.from('meetings').update({
-        qr_token: newToken,
-        qr_expiry: newExpiry.toISOString()
-      }).eq('id', meetingId);
-      
-      return NextResponse.json({ 
-        error: 'QR Code expired. Please refresh and scan again.',
-        expired: true,
-        newToken 
-      }, { status: 400 });
+      // SERVER-SIDE: Check token expiry with timezone awareness
+      const now = new Date();
+      const expiryDate = new Date(meeting.qr_expiry);
+
+      // Add 7 hours for WIB timezone if expiry is stored in UTC
+      const expiryWIB = new Date(expiryDate.getTime() + (7 * 60 * 60 * 1000));
+
+      if (now > expiryWIB) {
+        // Auto-refresh token if expired
+        const newToken = crypto.randomUUID();
+        const newExpiry = new Date(Date.now() + (5 * 60 * 1000)); // 5 minutes
+
+        await supabase.from('meetings').update({
+          qr_token: newToken,
+          qr_expiry: newExpiry.toISOString()
+        }).eq('id', meetingId);
+
+        return NextResponse.json({
+          error: 'QR Code expired. Please refresh and scan again.',
+          expired: true,
+          newToken
+        }, { status: 400 });
+      }
     }
 
     // 2. Check if user already attended (case-insensitive)
@@ -81,7 +85,7 @@ export async function POST(request: Request) {
     // Adjust for timezone offset (WIB = UTC+7)
     const nowWIB = new Date(serverTime.getTime() + (7 * 60 * 60 * 1000));
     const diffMinutes = differenceInMinutes(nowWIB, meetingStartDateTime);
-    
+
     let status = 'Hadir';
     if (diffMinutes > meeting.attendance_limit_minutes) {
       status = 'Late';
@@ -96,7 +100,7 @@ export async function POST(request: Request) {
          .eq('meeting_id', meetingId)
          .eq('device_id', deviceId)
          .limit(1);
-         
+
        if (deviceCheck && deviceCheck.length > 0) {
          is_suspicious = true;
          // Log into security_logs table
@@ -115,8 +119,8 @@ export async function POST(request: Request) {
 
     // 4. Upload photo if provided
     let photo_url: string | null = null;
-    
-    if (!photo) {
+
+    if (!photo && !manual) {
       console.warn(`[Photo] Warning: No photo data received for ${name}`);
     }
 
@@ -129,14 +133,14 @@ export async function POST(request: Request) {
 
         const buffer = Buffer.from(base64Data, 'base64');
         const fileName = `${meetingId}/${name.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.jpg`;
-        
+
         console.log(`[Photo] Attempting upload: ${fileName} (${buffer.length} bytes)`);
-        
+
         const { error: uploadError } = await supabase.storage
           .from('attendance-photos')
-          .upload(fileName, buffer, { 
-            contentType: 'image/jpeg', 
-            upsert: true 
+          .upload(fileName, buffer, {
+            contentType: 'image/jpeg',
+            upsert: true
           });
 
         if (uploadError) {
@@ -160,15 +164,34 @@ export async function POST(request: Request) {
       name,
       division,
       status,
-      device_id: deviceId,
+      device_id: manual ? 'manual-submission' : deviceId,
       is_suspicious,
-      photo_url: photo_url // Always include even if null to ensure field is set
+      photo_url: photo_url,
+      created_at: new Date().toISOString()
     };
 
     const { error: insertError } = await supabase.from('attendance').insert([insertData]);
     if (insertError) throw insertError;
 
-    return NextResponse.json({ success: true, status });
+    // 6. Send email notification (async, non-blocking)
+    if (email && process.env.SMTP_HOST) {
+      try {
+        const meetingDateFormatted = format(new Date(meeting.date), 'dd MMMM yyyy');
+        
+        await sendAttendanceEmail(email, {
+          name,
+          meetingTitle: meeting.title,
+          meetingDate: meetingDateFormatted,
+          status: status as 'Hadir' | 'Late',
+          timestamp: format(new Date(), 'HH:mm:ss')
+        });
+      } catch (emailError) {
+        console.error('[Email] Failed to send:', emailError);
+        // Don't fail the attendance if email fails
+      }
+    }
+
+    return NextResponse.json({ success: true, status, emailSent: !!email });
   } catch (error: any) {
     console.error(error);
     return NextResponse.json({ error: 'Server error: ' + error.message }, { status: 500 });
