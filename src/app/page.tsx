@@ -1,3 +1,4 @@
+import React from 'react';
 import Link from 'next/link';
 
 export default function Home() {
@@ -11,7 +12,7 @@ export default function Home() {
           BEM FILKOM
         </h1>
         <p className="text-xl md:text-2xl text-blue-200 opacity-90 font-light tracking-wide max-w-2xl">
-          Sistem Absensi & Manajemen Pertemuan Terintegrasi di Lingkungan Fakultas Ilmu Komputer.
+          Sistem Absensi &amp; Manajemen Pertemuan Terintegrasi di Lingkungan Fakultas Ilmu Komputer.
         </p>
       </div>
 
@@ -21,28 +22,27 @@ export default function Home() {
           className="group relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 p-8 hover:bg-white/20 transition-all duration-300 transform hover:scale-105"
         >
           <div className="relative z-10">
-            <h2 className={`mb-3 text-2xl font-bold flex items-center gap-2`}>
+            <h2 className="mb-3 text-2xl font-bold flex items-center gap-2">
               Admin Portal
               <span className="inline-block transition-transform group-hover:translate-x-1">→</span>
             </h2>
-            <p className={`m-0 text-sm text-blue-100 opacity-80 max-w-[30ch] leading-relaxed`}>
-              Khusus Sekretaris & Operator. Login untuk membuat pertemuan dan scan QR.
+            <p className="m-0 text-sm text-blue-100 opacity-80 max-w-[30ch] leading-relaxed">
+              Khusus Sekretaris &amp; Operator. Login untuk membuat pertemuan dan scan QR.
             </p>
           </div>
           <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-blue-500/30 rounded-full blur-2xl group-hover:bg-blue-400/40 transition-all"></div>
         </Link>
 
-        {/* Gamification / Leaderboard Link */}
         <Link
           href="/leaderboard"
           className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-yellow-500/10 to-orange-600/10 backdrop-blur-md border border-yellow-500/20 p-8 hover:bg-yellow-500/20 transition-all duration-300 transform hover:scale-105"
         >
           <div className="relative z-10">
-            <h2 className={`mb-3 text-2xl font-bold flex items-center gap-2 text-yellow-400`}>
+            <h2 className="mb-3 text-2xl font-bold flex items-center gap-2 text-yellow-400">
               Leaderboard
               <span className="inline-block transition-transform group-hover:translate-x-1">→</span>
             </h2>
-            <p className={`m-0 text-sm text-yellow-100/80 max-w-[30ch] leading-relaxed`}>
+            <p className="m-0 text-sm text-yellow-100/80 max-w-[30ch] leading-relaxed">
               Lihat peringkat kedisiplinan dan poin kehadiran tertinggi anggota CSSA.
             </p>
           </div>
@@ -50,11 +50,25 @@ export default function Home() {
         </Link>
       </div>
 
-      <div className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-8 text-center opacity-60 text-sm font-light">
-        <div>
-          <h3 className="text-lg font-bold text-white mb-1">50+</h3>
-          <p>Members</p>
-        </div>
+      <div className="flex flex-col md:flex-row gap-6 mt-6 w-full max-w-4xl justify-center">
+        <Link
+          href="/absence-request"
+          className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-600/10 backdrop-blur-md border border-emerald-500/20 p-8 hover:bg-emerald-500/20 transition-all duration-300 transform hover:scale-105"
+        >
+          <div className="relative z-10">
+            <h2 className="mb-3 text-2xl font-bold flex items-center gap-2 text-emerald-400">
+              Absence Request
+              <span className="inline-block transition-transform group-hover:translate-x-1">→</span>
+            </h2>
+            <p className="m-0 text-sm text-emerald-100/80 max-w-[30ch] leading-relaxed">
+              Ajukan izin atau sakit untuk pertemuan yang tidak dapat dihadiri.
+            </p>
+          </div>
+          <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-500/20 rounded-full blur-2xl group-hover:bg-emerald-400/30 transition-all"></div>
+        </Link>
+      </div>
+
+      <div className="mt-20 grid grid-cols-2 md:grid-cols-3 gap-8 text-center opacity-60 text-sm font-light">
         <div>
           <h3 className="text-lg font-bold text-white mb-1">Offline</h3>
           <p>Meeting Focus</p>
@@ -68,10 +82,10 @@ export default function Home() {
           <p>Monitoring</p>
         </div>
       </div>
-      
+
       <footer className="mt-auto py-8 text-blue-300 text-xs tracking-widest uppercase">
         &copy; {new Date().getFullYear()} Computer Science Student Association
       </footer>
     </main>
-  )
+  );
 }

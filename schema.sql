@@ -74,3 +74,33 @@ CREATE TABLE public.security_logs (
 
 ALTER TABLE public.security_logs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Enable all actions for all users" ON public.security_logs FOR ALL USING (true) WITH CHECK (true);
+
+-- Absence Requests Table (For Izin/Sakit with approval workflow)
+CREATE TABLE public.absence_requests (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    division TEXT NOT NULL,
+    meeting_id UUID REFERENCES public.meetings(id) ON DELETE CASCADE,
+    absence_type TEXT NOT NULL CHECK (absence_type IN ('Izin', 'Sakit')),
+    reason TEXT NOT NULL,
+    attachment_url TEXT, -- For surat izin or medical certificate
+    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    admin_note TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    reviewed_at TIMESTAMP WITH TIME ZONE,
+    reviewed_by TEXT
+);
+
+ALTER TABLE public.absence_requests ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable read access for all users" ON public.absence_requests FOR SELECT USING (true);
+CREATE POLICY "Enable insert for all users" ON public.absence_requests FOR INSERT WITH CHECK (true);
+CREATE POLICY "Enable update for all users" ON public.absence_requests FOR UPDATE USING (true);
+
+-- Performance Indexes
+CREATE INDEX IF NOT EXISTS idx_attendance_meeting_id ON attendance(meeting_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_name ON attendance(name);
+CREATE INDEX IF NOT EXISTS idx_attendance_status ON attendance(status);
+CREATE INDEX IF NOT EXISTS idx_meetings_date ON meetings(date);
+CREATE INDEX IF NOT EXISTS idx_absence_requests_meeting ON absence_requests(meeting_id);
+CREATE INDEX IF NOT EXISTS idx_absence_requests_name ON absence_requests(name);
+CREATE INDEX IF NOT EXISTS idx_absence_requests_status ON absence_requests(status);

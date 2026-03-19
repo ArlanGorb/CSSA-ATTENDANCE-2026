@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { withRateLimit, getClientIdentifier } from '@/lib/rate-limit';
 
 // GET — Fetch all face profiles (for face matching on client) or specific profile for management
 export async function GET(request: Request) {
+  // Apply lighter rate limiting for profile fetches (needed for face recognition)
+  const limited = await withRateLimit(request, '/api/face-profiles');
+  if (limited) {
+    return limited;
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const name = searchParams.get('name');
@@ -56,6 +63,12 @@ export async function GET(request: Request) {
 
 // POST — Register, update, or delete samples
 export async function POST(request: Request) {
+  // Apply rate limiting
+  const limited = await withRateLimit(request, '/api/face-profiles');
+  if (limited) {
+    return limited;
+  }
+
   try {
     const body = await request.json();
     const { name, division, faceDescriptor, action, sampleIndex, thumbnail, thumbnails } = body;

@@ -1,8 +1,16 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { differenceInMinutes, parseISO, set } from 'date-fns';
+import { withRateLimit, getClientIdentifier } from '@/lib/rate-limit';
 
 export async function POST(request: Request) {
+  // Apply rate limiting
+  const identifier = getClientIdentifier(request);
+  const limited = await withRateLimit(request, '/api/attendance');
+  if (limited) {
+    return limited;
+  }
+
   try {
     const body = await request.json();
     const { meetingId, token, name, division, deviceId, photo } = body;
@@ -23,9 +31,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid QR Token. Please rescan.' }, { status: 400 });
     }
 
-    // Check token expiry
-    if (new Date() > new Date(meeting.qr_expiry)) {
-      return NextResponse.json({ error: 'QR Code expired. Refresh and scan again.' }, { status: 400 });
+    // SERVER-SIDE: Check token expiry with timezone awareness
+    const now = new Date();
+    const expiryDate = new Date(meeting.qr_expiry);
+    
+    // Add 7 hours for WIB timezone if expiry is stored in UTC
+    const expiryWIB = new Date(expiryDate.getTime() + (7 * 60 * 60 * 1000));
+    
+    if (now > expiryWIB) {
+      // Auto-refresh token if expired
+      const newToken = crypto.randomUUID();
+      const newExpiry = new Date(Date.now() + (5 * 60 * 1000)); // 5 minutes
+      
+      await supabase.from('meetings').update({
+        qr_token: newToken,
+        qr_expiry: newExpiry.toISOString()
+      }).eq('id', meetingId);
+      
+      return NextResponse.json({ 
+        error: 'QR Code expired. Please refresh and scan again.',
+        expired: true,
+        newToken 
+      }, { status: 400 });
     }
 
     // 2. Check if user already attended (case-insensitive)
@@ -41,7 +68,7 @@ export async function POST(request: Request) {
     }
 
     // 3. Calculate Attendance Status (Hadir vs Late)
-    const now = new Date(); // Server time (UTC usually)
+    const serverTime = new Date(); // Server time (UTC usually)
 
     const [hours, minutes] = meeting.start_time.split(':');
     const meetingDate = parseISO(meeting.date);
@@ -52,7 +79,7 @@ export async function POST(request: Request) {
     });
 
     // Adjust for timezone offset (WIB = UTC+7)
-    const nowWIB = new Date(now.getTime() + (7 * 60 * 60 * 1000));
+    const nowWIB = new Date(serverTime.getTime() + (7 * 60 * 60 * 1000));
     const diffMinutes = differenceInMinutes(nowWIB, meetingStartDateTime);
     
     let status = 'Hadir';

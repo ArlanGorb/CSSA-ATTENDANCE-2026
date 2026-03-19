@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 
 import { supabase } from '@/lib/supabase';
 import { QRCodeSVG } from 'qrcode.react';
-import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, Archive, RotateCcw, Terminal, ShieldAlert, Image as ImageIcon, Camera, Menu, UserCircle, Search, Upload, Loader2, Sparkles, BarChart2 } from 'lucide-react';
+import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, Archive, RotateCcw, Terminal, ShieldAlert, Image as ImageIcon, Camera, Menu, UserCircle, Search, Upload, Loader2, Sparkles, BarChart2, FileText, BarChart3, ArrowUpRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 import * as faceapi from 'face-api.js';
 
@@ -44,10 +44,15 @@ export default function AdminDashboard() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // New Management view states
-  const [activeView, setActiveView] = useState<'meetings' | 'students' | 'analytics'>('meetings');
+  const [activeView, setActiveView] = useState<'meetings' | 'students' | 'analytics' | 'absence-requests'>('meetings');
   const [allStudents, setAllStudents] = useState<FaceProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [allAttendances, setAllAttendances] = useState<any[]>([]);
+
+  // Absence Requests states
+  const [absenceRequests, setAbsenceRequests] = useState<any[]>([]);
+  const [selectedRequest, setSelectedRequest] = useState<any>(null);
+  const [adminNote, setAdminNote] = useState('');
   
   // Face Training states
   const [modelsLoaded, setModelsLoaded] = useState(false);
@@ -89,7 +94,10 @@ export default function AdminDashboard() {
     loadModels();
     fetchAllStudents();
     fetchAllAttendances();
-  }, [showArchived]); // Re-fetch on toggle
+    if (activeView === 'absence-requests') {
+      fetchAbsenceRequests();
+    }
+  }, [showArchived, activeView]); // Re-fetch on toggle
 
   const loadModels = async () => {
     try {
@@ -130,11 +138,70 @@ export default function AdminDashboard() {
             date
           )
         `);
-      
+
       if (data) setAllAttendances(data);
       if (error) throw error;
     } catch (err) {
       console.error("Error fetching all attendances:", err);
+    }
+  };
+
+  const fetchAbsenceRequests = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('absence_requests')
+        .select(`
+          *,
+          meetings (
+            title,
+            date
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (data) setAbsenceRequests(data);
+      if (error) throw error;
+    } catch (err) {
+      console.error("Error fetching absence requests:", err);
+    }
+  };
+
+  const handleReviewRequest = async (requestId: string, status: 'approved' | 'rejected') => {
+    try {
+      const { error } = await supabase
+        .from('absence_requests')
+        .update({
+          status,
+          admin_note: adminNote,
+          reviewed_at: new Date().toISOString(),
+          reviewed_by: 'Admin'
+        })
+        .eq('id', requestId);
+
+      if (error) throw error;
+
+      // Update attendance record if approved
+      if (status === 'approved' && selectedRequest) {
+        await supabase
+          .from('attendance')
+          .upsert({
+            meeting_id: selectedRequest.meeting_id,
+            name: selectedRequest.name,
+            division: selectedRequest.division,
+            status: selectedRequest.absence_type,
+            device_id: 'admin-approved',
+            is_suspicious: false
+          }, {
+            onConflict: 'meeting_id,name'
+          });
+      }
+
+      setAdminNote('');
+      setSelectedRequest(null);
+      fetchAbsenceRequests();
+      alert(`Request ${status} successfully!`);
+    } catch (err: any) {
+      alert('Error updating request: ' + err.message);
     }
   };
 
@@ -681,6 +748,27 @@ export default function AdminDashboard() {
                   <Users size={18} className={activeView === 'students' ? 'text-blue-600' : 'text-slate-400'} />
                   <span className="font-medium text-sm">Data Mahasiswa</span>
                </button>
+               <button
+                  onClick={() => setActiveView('absence-requests')}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${
+                    activeView === 'absence-requests'
+                      ? 'bg-blue-50 border-blue-100 text-blue-900 shadow-sm'
+                      : 'bg-transparent border-transparent hover:bg-slate-50 text-slate-600'
+                  }`}
+               >
+                  <FileText size={18} className={activeView === 'absence-requests' ? 'text-blue-600' : 'text-slate-400'} />
+                  <span className="font-medium text-sm">Absence Requests</span>
+               </button>
+               <a
+                  href="/analytics"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center gap-3 p-3 rounded-xl transition-all border bg-transparent border-transparent hover:bg-slate-50 text-slate-600"
+               >
+                  <BarChart3 size={18} className="text-slate-400" />
+                  <span className="font-medium text-sm">Analytics Dashboard</span>
+                  <ArrowUpRight size={14} className="ml-auto text-slate-400" />
+               </a>
             </div>
 
             <div className="my-6 border-t border-slate-100"></div>
@@ -1519,6 +1607,220 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Absence Requests View */}
+        {activeView === 'absence-requests' && (
+          <div className="space-y-6 animate-fade-in-up">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="px-6 py-5 border-b border-slate-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-slate-50/50">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-800">Absence Requests</h2>
+                  <p className="text-sm text-slate-500 mt-1">Review and approve student absence requests (Izin/Sakit)</p>
+                </div>
+                <button
+                  onClick={fetchAbsenceRequests}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-all flex items-center gap-2"
+                >
+                  <RefreshCcw size={16} />
+                  Refresh
+                </button>
+              </div>
+
+              <div className="p-0 overflow-x-auto">
+                {absenceRequests.length === 0 ? (
+                  <div className="text-center py-20 text-slate-400">
+                    <FileText size={48} className="mx-auto mb-4 opacity-20" />
+                    <p>No absence requests yet.</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50/50 text-slate-500 uppercase text-[10px] font-bold tracking-widest">
+                      <tr>
+                        <th className="px-6 py-4 text-left">Student</th>
+                        <th className="px-6 py-4 text-left">Meeting</th>
+                        <th className="px-6 py-4 text-left">Type</th>
+                        <th className="px-6 py-4 text-left">Reason</th>
+                        <th className="px-6 py-4 text-center">Status</th>
+                        <th className="px-6 py-4 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {absenceRequests.map((request) => (
+                        <tr
+                          key={request.id}
+                          className={`hover:bg-slate-50 transition-colors cursor-pointer ${
+                            selectedRequest?.id === request.id ? 'bg-blue-50' : ''
+                          }`}
+                          onClick={() => setSelectedRequest(request)}
+                        >
+                          <td className="px-6 py-4">
+                            <div>
+                              <p className="font-semibold text-slate-800">{request.name}</p>
+                              <p className="text-xs text-slate-500">{request.division}</p>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div>
+                              <p className="text-slate-700">{request.meetings?.title || 'Unknown'}</p>
+                              <p className="text-xs text-slate-500">
+                                {new Date(request.meetings?.date).toLocaleDateString('en-ID', { day: 'numeric', month: 'short' })}
+                              </p>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                              request.absence_type === 'Izin'
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-purple-100 text-purple-700'
+                            }`}>
+                              {request.absence_type}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 max-w-xs">
+                            <p className="text-slate-600 text-sm truncate">{request.reason}</p>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                              request.status === 'pending'
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : request.status === 'approved'
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-red-100 text-red-700'
+                            }`}>
+                              {request.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            {request.status === 'pending' && (
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleReviewRequest(request.id, 'approved');
+                                  }}
+                                  className="p-1.5 rounded-lg bg-green-100 text-green-600 hover:bg-green-200 transition-colors"
+                                  title="Approve"
+                                >
+                                  <CheckCircle size={16} />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleReviewRequest(request.id, 'rejected');
+                                  }}
+                                  className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
+                                  title="Reject"
+                                >
+                                  <X size={16} />
+                                </button>
+                              </div>
+                            )}
+                            {request.status !== 'pending' && (
+                              <span className="text-xs text-slate-400">Reviewed</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+
+            {/* Review Panel */}
+            {selectedRequest && (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-bold text-slate-800">Review Request</h3>
+                  <button
+                    onClick={() => {
+                      setSelectedRequest(null);
+                      setAdminNote('');
+                    }}
+                    className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
+                  >
+                    <X size={20} className="text-slate-500" />
+                  </button>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-6 mb-6">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-500 mb-1">Student Name</label>
+                    <p className="font-semibold text-slate-800">{selectedRequest.name}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-500 mb-1">Division</label>
+                    <p className="font-semibold text-slate-800">{selectedRequest.division}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-500 mb-1">Meeting</label>
+                    <p className="font-semibold text-slate-800">{selectedRequest.meetings?.title}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-500 mb-1">Absence Type</label>
+                    <p className="font-semibold text-slate-800">{selectedRequest.absence_type}</p>
+                  </div>
+                </div>
+
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-slate-500 mb-1">Reason</label>
+                  <p className="text-slate-700 bg-slate-50 p-3 rounded-xl">{selectedRequest.reason}</p>
+                </div>
+
+                {selectedRequest.attachment_url && (
+                  <div className="mb-6">
+                    <label className="block text-sm font-medium text-slate-500 mb-2">Attachment</label>
+                    <a
+                      href={selectedRequest.attachment_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700"
+                    >
+                      <FileText size={16} />
+                      View Attachment
+                    </a>
+                  </div>
+                )}
+
+                {selectedRequest.admin_note && (
+                  <div className="mb-6">
+                    <label className="block text-sm font-medium text-slate-500 mb-1">Admin Note</label>
+                    <p className="text-slate-700 bg-slate-50 p-3 rounded-xl">{selectedRequest.admin_note}</p>
+                  </div>
+                )}
+
+                {selectedRequest.status === 'pending' && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Admin Note (Optional)</label>
+                    <textarea
+                      value={adminNote}
+                      onChange={(e) => setAdminNote(e.target.value)}
+                      rows={3}
+                      placeholder="Add a note for this request..."
+                      className="w-full border border-slate-200 rounded-xl px-4 py-3 text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                    />
+                    <div className="flex gap-3 mt-4">
+                      <button
+                        onClick={() => handleReviewRequest(selectedRequest.id, 'approved')}
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+                      >
+                        <CheckCircle size={18} />
+                        Approve Request
+                      </button>
+                      <button
+                        onClick={() => handleReviewRequest(selectedRequest.id, 'rejected')}
+                        className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+                      >
+                        <X size={18} />
+                        Reject Request
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
