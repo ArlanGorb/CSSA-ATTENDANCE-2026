@@ -11,42 +11,39 @@ const DIVISIONS = [
   "Olahraga", "Humas", "Keamanan", "Pendidikan", "Parlemanterian"
 ];
 
-// Face Detection Configuration
-const FACE_DETECTION_INTERVAL_MS = 250; 
-const FACE_SCORE_THRESHOLD = 0.55; // Lowered for better detection in various lights
-const FACE_CONFIRM_FRAMES = 8; 
-const FACE_MIN_SIZE_RATIO = 0.15; 
-const FACE_MATCH_THRESHOLD = 0.45; // Adjusted for better reliability (was 0.38)
-const REQUIRED_CONSECUTIVE_MATCHES = 3; 
-const TINY_FACE_INPUT_SIZE = 416; // Increased from 320 for more detail
+// Face Detection Configuration — Optimized for HIGH ACCURACY
+const FACE_DETECTION_INTERVAL_MS = 200; // Faster polling for smoother detection
+const FACE_SCORE_THRESHOLD = 0.5;
+const FACE_CONFIRM_FRAMES = 6; // Slightly fewer frames needed (SSD is more reliable)
+const FACE_MIN_SIZE_RATIO = 0.12; // Allow slightly smaller faces (for distance)
+const FACE_MATCH_THRESHOLD = 0.42; // Stricter matching to reduce false positives (was 0.45)
+const REQUIRED_CONSECUTIVE_MATCHES = 3;
+const SSD_MIN_CONFIDENCE = 0.5; // SSD MobileNet minimum detection confidence
 
 // Liveness Detection (Smile)
-// Liveness Detection (Smile)
-const SMILE_THRESHOLD = 0.74; // Lowered for easier triggering
+const SMILE_THRESHOLD = 0.74;
 
 // Smile Score calculation: Mouth width / Eye distance
 function computeSmileScore(landmarks: faceapi.Point[]): number {
   const dist = (a: faceapi.Point, b: faceapi.Point) =>
     Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
   
-  // Landmarks: 48 (left corner), 54 (right corner)
   const mouthWidth = dist(landmarks[48], landmarks[54]);
-  // Landmarks: 36 (left eye outer), 45 (right eye outer)
   const eyeDist = dist(landmarks[36], landmarks[45]);
   
   return eyeDist > 0 ? mouthWidth / eyeDist : 0;
 }
 
-// Capture snapshot from video
+// Capture snapshot from video (higher resolution for better quality)
 function captureSnapshot(video: HTMLVideoElement): string | null {
   try {
     const canvas = document.createElement('canvas');
-    canvas.width = 320;
-    canvas.height = 240;
+    canvas.width = 640;
+    canvas.height = 480;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
-    ctx.drawImage(video, 0, 0, 320, 240);
-    return canvas.toDataURL('image/jpeg', 0.6);
+    ctx.drawImage(video, 0, 0, 640, 480);
+    return canvas.toDataURL('image/jpeg', 0.75);
   } catch { return null; }
 }
 
@@ -115,10 +112,11 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
     const init = async () => {
       try {
         await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-          faceapi.nets.ssdMobilenetv1.loadFromUri('/models'), // Loading high-precision model
+          faceapi.nets.ssdMobilenetv1.loadFromUri('/models'),   // Primary: HIGH accuracy detection
+          faceapi.nets.tinyFaceDetector.loadFromUri('/models'), // Secondary: fast multi-face check
           faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
           faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
+          faceapi.nets.faceExpressionNet.loadFromUri('/models'), // Better liveness analysis
         ]);
         setModelsLoaded(true);
         setDetectionStatus('Sistem Siap');
@@ -241,8 +239,9 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
       if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) return;
 
       try {
+        // Use SSD MobileNet for MORE ACCURATE face detection (slower but much better precision)
         const fullDetection = await faceapi
-          .detectSingleFace(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: TINY_FACE_INPUT_SIZE, scoreThreshold: 0.5 }))
+          .detectSingleFace(videoRef.current!, new faceapi.SsdMobilenetv1Options({ minConfidence: SSD_MIN_CONFIDENCE }))
           .withFaceLandmarks();
 
         if (fullDetection) {
@@ -302,18 +301,36 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
               // Only attempt recognition if not already matched and face is stable
               if (recognitionCounter % 2 === 0 && labeledDescriptors.current.length > 0 && !matchedProfile) {
                 try {
-                  // Precision Recognition using SsdMobilenetv1
+                  // HIGH PRECISION Recognition using SsdMobilenetv1 + descriptor
                   const recDetection = await faceapi
                     .detectSingleFace(videoRef.current!, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }))
                     .withFaceLandmarks()
                     .withFaceDescriptor();
 
                   if (recDetection) {
-                    const matcher = new faceapi.FaceMatcher(labeledDescriptors.current, FACE_MATCH_THRESHOLD);
-                    const match = matcher.findBestMatch(recDetection.descriptor);
+                    // Multi-descriptor averaging: compare against ALL samples of each profile
+                    // and average the distances for a more robust match
+                    let bestMatch = { label: 'unknown', distance: 1.0 };
+
+                    for (const labeled of labeledDescriptors.current) {
+                      const distances = labeled.descriptors.map(refDesc => {
+                        return faceapi.euclideanDistance(
+                          Array.from(recDetection.descriptor),
+                          Array.from(refDesc)
+                        );
+                      });
                     
-                    if (match.label !== 'unknown') {
-                      const [matchName, matchDivision] = match.label.split('|||');
+                      // Use the median distance (more robust than average against outliers)
+                      const sorted = [...distances].sort((a, b) => a - b);
+                      const medianDist = sorted[Math.floor(sorted.length / 2)];
+
+                      if (medianDist < bestMatch.distance) {
+                        bestMatch = { label: labeled.label, distance: medianDist };
+                      }
+                    }
+
+                    if (bestMatch.distance < FACE_MATCH_THRESHOLD) {
+                      const [matchName, matchDivision] = bestMatch.label.split('|||');
                       
                       // Identity Stability Check (Consecutive Matches)
                       if (lastMatchedName.current === matchName) {
@@ -324,7 +341,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
                       }
 
                       if (consecutiveMatchCount.current >= REQUIRED_CONSECUTIVE_MATCHES) {
-                        setMatchedProfile({ name: matchName, division: matchDivision, distance: match.distance });
+                        setMatchedProfile({ name: matchName, division: matchDivision, distance: bestMatch.distance });
                       } else {
                         setDetectionStatus(`Verifying Identity... (${consecutiveMatchCount.current}/${REQUIRED_CONSECUTIVE_MATCHES})`);
                       }
@@ -367,7 +384,8 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
         }
 
         // Multiple face detection for extra security
-        const allFaces = await faceapi.detectAllFaces(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 }));
+        // Multi-face security check (use TinyFace for speed here — just need count)
+        const allFaces = await faceapi.detectAllFaces(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }));
         if (allFaces.length > 1) {
           setDetectionStatus('Beberapa wajah — identifikasi diblokir');
           setFaceDetected(false);
@@ -381,7 +399,11 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+        video: { 
+          facingMode: 'user', 
+          width: { ideal: 1280 },  // Higher resolution for better facial detail
+          height: { ideal: 720 },
+        }
       });
       streamRef.current = stream;
       setShowCamera(true);
