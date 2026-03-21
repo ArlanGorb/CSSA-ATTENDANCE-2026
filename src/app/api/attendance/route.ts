@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { meetingId, token, name, division, deviceId, photo, manual, email, latitude, longitude } = body;
+    const { meetingId, token, name, division, deviceId, photo, manual, email, latitude, longitude, gpsAccuracy } = body;
 
     // 1. Verify Meeting & Token
     const { data: meeting, error: meetingError } = await supabase
@@ -91,7 +91,12 @@ export async function POST(request: Request) {
           latitude, longitude
         );
 
-        if (distance > meeting.radius_meters) {
+        // Factor in GPS accuracy: subtract the device's reported accuracy from the distance.
+        // This gives a fair margin for GPS imprecision (typically 10-50m on mobile).
+        const accuracyMargin = typeof gpsAccuracy === 'number' ? gpsAccuracy : 0;
+        const effectiveDistance = Math.max(0, distance - accuracyMargin);
+
+        if (effectiveDistance > meeting.radius_meters) {
           // Log geofencing violation
           await supabase.from('security_logs').insert([{
             meeting_id: meetingId,
@@ -103,8 +108,10 @@ export async function POST(request: Request) {
           }]);
 
           return NextResponse.json({
-            error: `Anda berada di luar area yang diizinkan (${Math.round(distance)}m dari lokasi, maks ${meeting.radius_meters}m).`,
-            distance: Math.round(distance),
+            error: `Anda berada di luar area (jarak efektif: ${Math.round(effectiveDistance)}m, maks: ${meeting.radius_meters}m). Akurasi GPS: ${Math.round(accuracyMargin)}m.`,
+            distance: Math.round(effectiveDistance),
+            rawDistance: Math.round(distance),
+            gpsAccuracy: Math.round(accuracyMargin),
             maxRadius: meeting.radius_meters
           }, { status: 403 });
         }

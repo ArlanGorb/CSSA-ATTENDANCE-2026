@@ -71,8 +71,9 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   const [scanning, setScanning] = useState(false);
   const [deviceId, setDeviceId] = useState<string>('');
   const [showBreachAlert, setShowBreachAlert] = useState(false);
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number; accuracy: number } | null>(null);
   const [geoError, setGeoError] = useState<string | null>(null);
+  const geoWatchId = useRef<number | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const photoRef = useRef<string | null>(null);
 
@@ -174,17 +175,26 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
     };
     initFingerprint();
 
-    // Capture GPS location for geofencing
+    // Capture GPS location for geofencing (continuous watching for best accuracy)
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
+      geoWatchId.current = navigator.geolocation.watchPosition(
         (pos) => {
-          setUserLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+          setUserLocation({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy
+          });
+          // Once we have good accuracy (< 30m), we can stop watching to save battery
+          if (pos.coords.accuracy < 30 && geoWatchId.current !== null) {
+            navigator.geolocation.clearWatch(geoWatchId.current);
+            geoWatchId.current = null;
+          }
         },
         (err) => {
           console.warn('[Geo] Location error:', err.message);
-          setGeoError('Tidak dapat mengakses lokasi. Geofencing mungkin gagal.');
+          setGeoError('Tidak dapat mengakses lokasi. Aktifkan GPS Anda.');
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
     }
 
@@ -201,6 +211,9 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
       if (detectionLoop.current) clearInterval(detectionLoop.current);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (geoWatchId.current !== null) {
+        navigator.geolocation.clearWatch(geoWatchId.current);
       }
     };
   }, []);
@@ -456,6 +469,26 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
       photoRef.current = captureSnapshot(videoRef.current);
     }
     
+    // Re-capture fresh GPS position right before submitting for maximum accuracy
+    let freshLat = userLocation?.latitude;
+    let freshLon = userLocation?.longitude;
+    let freshAccuracy = userLocation?.accuracy;
+
+    if (navigator.geolocation) {
+      try {
+        const freshPos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true, timeout: 5000, maximumAge: 0
+          });
+        });
+        freshLat = freshPos.coords.latitude;
+        freshLon = freshPos.coords.longitude;
+        freshAccuracy = freshPos.coords.accuracy;
+      } catch (e) {
+        console.warn('[Geo] Fresh position failed, using cached:', e);
+      }
+    }
+
     stopCamera();
     setLoading(true);
     setError(null);
@@ -471,8 +504,9 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
           division: profileToSubmit.division,
           deviceId: deviceId,
           photo: photoRef.current || undefined,
-          latitude: userLocation?.latitude,
-          longitude: userLocation?.longitude,
+          latitude: freshLat,
+          longitude: freshLon,
+          gpsAccuracy: freshAccuracy,
         })
       });
 
