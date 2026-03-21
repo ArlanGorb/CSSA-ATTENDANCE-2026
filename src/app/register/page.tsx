@@ -832,35 +832,6 @@ export default function RegisterFace() {
                   )}
                 </button>
 
-                <div className="relative mt-4">
-                  <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                    <div className="w-full border-t border-white/5"></div>
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase tracking-widest font-bold">
-                    <span className="bg-slate-900 border border-white/10 px-4 py-1 rounded-full text-slate-500">Atau</span>
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <input
-                    type="file"
-                    id="photo-upload"
-                    accept="image/*"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    disabled={!modelsLoaded || !name.trim() || !division || submitting}
-                  />
-                  <label
-                    htmlFor="photo-upload"
-                    className={`w-full bg-white/5 border border-white/10 hover:bg-white/10 text-white font-bold py-4 rounded-xl transition-all transform hover:scale-[1.02] active:scale-[0.98] flex justify-center items-center gap-2 cursor-pointer ${(!modelsLoaded || !name.trim() || !division || submitting) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    <ImageIcon size={18} className="text-violet-400" />
-                    <span>Latih Wajah via Foto</span>
-                  </label>
-                  <p className="text-[10px] text-center text-slate-500 mt-2 italic px-4">
-                    Gunakan foto wajah yang jelas dan menghadap ke depan untuk meningkatkan akurasi.
-                  </p>
-                </div>
               </div>
 
               {/* Navigation */}
