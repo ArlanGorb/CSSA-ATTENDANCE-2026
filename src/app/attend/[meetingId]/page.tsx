@@ -16,7 +16,7 @@ const FACE_DETECTION_INTERVAL_MS = 200; // Faster polling for smoother detection
 const FACE_SCORE_THRESHOLD = 0.5;
 const FACE_CONFIRM_FRAMES = 6; // Slightly fewer frames needed (SSD is more reliable)
 const FACE_MIN_SIZE_RATIO = 0.12; // Allow slightly smaller faces (for distance)
-const FACE_MATCH_THRESHOLD = 0.42; // Stricter matching to reduce false positives (was 0.45)
+const FACE_MATCH_THRESHOLD = 0.50; // More forgiving: allows recognition under varied conditions
 const REQUIRED_CONSECUTIVE_MATCHES = 3;
 const SSD_MIN_CONFIDENCE = 0.5; // SSD MobileNet minimum detection confidence
 

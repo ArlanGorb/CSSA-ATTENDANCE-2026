@@ -12,7 +12,7 @@ const DIVISIONS = [
 const CAPTURE_COUNT = 10; // Increased from 5 for higher accuracy
 const CAPTURE_INTERVAL_MS = 600; // Time between captures
 const FACE_SCORE_THRESHOLD = 0.55; 
-const FACE_MATCH_THRESHOLD = 0.45; // Consistent with attendance page
+const FACE_MATCH_THRESHOLD = 0.50; // Consistent with attendance page
 
 type FaceProfile = {
   id: string;

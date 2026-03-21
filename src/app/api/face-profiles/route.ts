@@ -132,7 +132,8 @@ export async function POST(request: Request) {
       .not('face_descriptor', 'is', null);
 
     if (allProfiles && allProfiles.length > 0) {
-      const threshold = 0.40;
+      // Lower threshold = harder to flag as duplicate (faces must be VERY similar)
+      const duplicateThreshold = 0.32;
       const duplicate = allProfiles.find(p => {
         if (p.name.toLowerCase() === name.trim().toLowerCase()) return false;
         
@@ -144,12 +145,21 @@ export async function POST(request: Request) {
           else if (typeof dbRaw[0] === 'object') dbDescriptors = dbRaw.map((i: any) => i.descriptor);
         }
 
-        return incomingDescriptors.some((incDesc: number[]) => {
-          return dbDescriptors.some(dbDesc => {
+        if (dbDescriptors.length === 0) return false;
+
+        // Use median matching: compute ALL distances and check median
+        // This prevents false positives from a single bad sample
+        const allDistances: number[] = [];
+        incomingDescriptors.forEach((incDesc: number[]) => {
+          dbDescriptors.forEach(dbDesc => {
             const dist = Math.sqrt(dbDesc.reduce((sum: number, val: number, i: number) => sum + Math.pow(val - incDesc[i], 2), 0));
-            return dist < threshold;
+            allDistances.push(dist);
           });
         });
+
+        const sorted = [...allDistances].sort((a, b) => a - b);
+        const medianDist = sorted[Math.floor(sorted.length / 2)];
+        return medianDist < duplicateThreshold;
       });
 
       if (duplicate) {
