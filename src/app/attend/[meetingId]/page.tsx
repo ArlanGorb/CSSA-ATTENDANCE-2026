@@ -480,7 +480,7 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
       console.log('[executeAttendanceSubmit] API Response:', res.status, data);
 
       if (res.ok) {
-        console.log('[executeAttendanceSubmit] Success! Updating state.');
+        console.log('[executeAttendanceSubmit] Success! Showing success screen.');
         setAttendanceResult({
           name: profileToSubmit.name,
           division: profileToSubmit.division,
@@ -488,16 +488,19 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
         });
         setStatus(`Attendance recorded: ${data.status}`);
       } else {
-        if (data.error && data.error.includes("already submitted")) setShowBreachAlert(true);
-        else setError(data.error);
-        setShowCamera(false);
-        setScanning(false);
+        if (data.error && data.error.includes("already submitted")) {
+          setShowBreachAlert(true);
+        } else if (data.geoRequired) {
+          setError('⚠️ Lokasi GPS diperlukan. Aktifkan GPS dan coba lagi.');
+        } else if (data.distance) {
+          setError(`📍 Anda di luar area (${data.distance}m dari lokasi, maks ${data.maxRadius}m).`);
+        } else {
+          setError(data.error || 'Terjadi kesalahan. Silakan coba lagi.');
+        }
       }
     } catch (err) {
       console.error('[executeAttendanceSubmit] Fetch error:', err);
-      setError('Connection failed. Please check your internet.');
-      setShowCamera(false);
-      setScanning(false);
+      setError('Koneksi gagal. Periksa internet Anda.');
     } finally { setLoading(false); }
   };
 
@@ -669,21 +672,57 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
             </div>
           ) : (
             <div className="text-center">
-              <div className="inline-block p-4 rounded-full bg-blue-500/10 mb-6 border border-blue-500/20"><ScanLine className="text-blue-400 w-10 h-10" /></div>
-              <h1 className="text-3xl font-bold text-white tracking-tight">Presensi CSSA</h1>
-              <p className="text-sm text-blue-200/60 mt-2 mb-8">Sistem Identifikasi Presisi Tinggi v2.0</p>
-              
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-8 text-xs text-blue-100/70 leading-relaxed text-left space-y-2">
-                <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Pastikan pencahayaan cukup</p>
-                <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Lihat langsung ke kamera</p>
-                <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Tersenyum saat diminta</p>
-              </div>
+              {/* Loading state after authentication */}
+              {loading && (
+                <div className="flex flex-col items-center py-12">
+                  <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500/30 border-t-blue-400 mb-6"></div>
+                  <p className="text-white font-semibold text-lg">Memproses Kehadiran...</p>
+                  <p className="text-blue-300/60 text-sm mt-2">Mohon tunggu sebentar</p>
+                </div>
+              )}
 
-              <button onClick={startCamera} disabled={!modelsLoaded} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-5 rounded-2xl shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 border border-white/10">
-                {modelsLoaded ? "Identifikasi Aman" : "Inisialisasi AI..."}
-              </button>
-              
-              <p className="text-slate-600 text-xs mt-6">Baru di sini? <a href="/register" className="text-blue-400 font-bold hover:underline">Daftarkan wajah Anda</a></p>
+              {/* Error state after failed submission */}
+              {error && !loading && (
+                <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-2xl">
+                  <div className="flex items-center gap-2 text-red-400 mb-2">
+                    <AlertOctagon size={18} />
+                    <span className="font-bold text-sm">Gagal Mengirim Absen</span>
+                  </div>
+                  <p className="text-red-300/80 text-xs leading-relaxed">{error}</p>
+                  <button 
+                    onClick={() => { setError(null); startCamera(); }}
+                    className="mt-4 w-full py-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 rounded-xl text-xs font-bold transition-all"
+                  >
+                    Coba Lagi
+                  </button>
+                </div>
+              )}
+
+              {!loading && !error && (
+                <>
+                  <div className="inline-block p-4 rounded-full bg-blue-500/10 mb-6 border border-blue-500/20"><ScanLine className="text-blue-400 w-10 h-10" /></div>
+                  <h1 className="text-3xl font-bold text-white tracking-tight">Presensi CSSA</h1>
+                  <p className="text-sm text-blue-200/60 mt-2 mb-8">Sistem Identifikasi Presisi Tinggi v2.0</p>
+                  
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-8 text-xs text-blue-100/70 leading-relaxed text-left space-y-2">
+                    <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Pastikan pencahayaan cukup</p>
+                    <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Lihat langsung ke kamera</p>
+                    <p className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Tersenyum saat diminta</p>
+                  </div>
+
+                  {geoError && (
+                    <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-400 text-xs font-medium flex items-center gap-2">
+                      <AlertOctagon size={14} /> {geoError}
+                    </div>
+                  )}
+
+                  <button onClick={startCamera} disabled={!modelsLoaded} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-5 rounded-2xl shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 border border-white/10">
+                    {modelsLoaded ? "Identifikasi Aman" : "Inisialisasi AI..."}
+                  </button>
+                  
+                  <p className="text-slate-600 text-xs mt-6">Baru di sini? <a href="/register" className="text-blue-400 font-bold hover:underline">Daftarkan wajah Anda</a></p>
+                </>
+              )}
             </div>
           )}
         </div>
