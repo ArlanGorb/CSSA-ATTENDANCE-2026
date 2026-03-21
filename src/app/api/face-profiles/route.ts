@@ -2,6 +2,13 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { withRateLimit, getClientIdentifier } from '@/lib/rate-limit';
 
+// ─── Admin Token Verification ───
+function verifyAdminToken(request: Request): boolean {
+  const adminToken = request.headers.get('x-admin-token');
+  const serverPassword = process.env.ADMIN_PASSWORD || '8182838485';
+  return adminToken === serverPassword;
+}
+
 // GET — Fetch all face profiles (for face matching on client) or specific profile for management
 export async function GET(request: Request) {
   // Apply lighter rate limiting for profile fetches (needed for face recognition)
@@ -212,6 +219,11 @@ export async function POST(request: Request) {
 
 // DELETE — Remove a face profile
 export async function DELETE(request: Request) {
+  // Require admin token for profile deletion
+  if (!verifyAdminToken(request)) {
+    return NextResponse.json({ error: 'Unauthorized. Admin token required.' }, { status: 401 });
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

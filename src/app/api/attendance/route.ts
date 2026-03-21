@@ -4,6 +4,28 @@ import { differenceInMinutes, parseISO, set, format } from 'date-fns';
 import { withRateLimit, getClientIdentifier } from '@/lib/rate-limit';
 import { sendAttendanceEmail } from '@/lib/email';
 
+// ─── Haversine Formula for Geofencing ───
+function haversineDistance(
+  lat1: number, lon1: number,
+  lat2: number, lon2: number
+): number {
+  const R = 6371e3; // Earth radius in meters
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ─── Admin Token Verification ───
+function verifyAdminToken(request: Request): boolean {
+  const adminToken = request.headers.get('x-admin-token');
+  const serverPassword = process.env.ADMIN_PASSWORD || '8182838485';
+  return adminToken === serverPassword;
+}
+
 export async function POST(request: Request) {
   // Apply rate limiting
   const identifier = getClientIdentifier(request);
@@ -14,7 +36,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { meetingId, token, name, division, deviceId, photo, manual, email } = body;
+    const { meetingId, token, name, division, deviceId, photo, manual, email, latitude, longitude } = body;
 
     // 1. Verify Meeting & Token
     const { data: meeting, error: meetingError } = await supabase
@@ -37,14 +59,11 @@ export async function POST(request: Request) {
       // SERVER-SIDE: Check token expiry with timezone awareness
       const now = new Date();
       const expiryDate = new Date(meeting.qr_expiry);
-
-      // Add 7 hours for WIB timezone if expiry is stored in UTC
       const expiryWIB = new Date(expiryDate.getTime() + (7 * 60 * 60 * 1000));
 
       if (now > expiryWIB) {
-        // Auto-refresh token if expired
         const newToken = crypto.randomUUID();
-        const newExpiry = new Date(Date.now() + (5 * 60 * 1000)); // 5 minutes
+        const newExpiry = new Date(Date.now() + (5 * 60 * 1000));
 
         await supabase.from('meetings').update({
           qr_token: newToken,
@@ -56,6 +75,39 @@ export async function POST(request: Request) {
           expired: true,
           newToken
         }, { status: 400 });
+      }
+
+      // ─── GEOFENCING VALIDATION ───
+      if (meeting.latitude && meeting.longitude && meeting.radius_meters) {
+        if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+          return NextResponse.json({
+            error: 'Lokasi diperlukan. Aktifkan GPS Anda dan coba lagi.',
+            geoRequired: true
+          }, { status: 400 });
+        }
+
+        const distance = haversineDistance(
+          meeting.latitude, meeting.longitude,
+          latitude, longitude
+        );
+
+        if (distance > meeting.radius_meters) {
+          // Log geofencing violation
+          await supabase.from('security_logs').insert([{
+            meeting_id: meetingId,
+            name: name,
+            division: division,
+            device_id: deviceId,
+            threat_level: 'HIGH',
+            threat_type: 'GEOFENCE_VIOLATION',
+          }]);
+
+          return NextResponse.json({
+            error: `Anda berada di luar area yang diizinkan (${Math.round(distance)}m dari lokasi, maks ${meeting.radius_meters}m).`,
+            distance: Math.round(distance),
+            maxRadius: meeting.radius_meters
+          }, { status: 403 });
+        }
       }
     }
 
@@ -72,8 +124,7 @@ export async function POST(request: Request) {
     }
 
     // 3. Calculate Attendance Status (Hadir vs Late)
-    const serverTime = new Date(); // Server time (UTC usually)
-
+    const serverTime = new Date();
     const [hours, minutes] = meeting.start_time.split(':');
     const meetingDate = parseISO(meeting.date);
     const meetingStartDateTime = set(meetingDate, {
@@ -82,7 +133,6 @@ export async function POST(request: Request) {
         seconds: 0
     });
 
-    // Adjust for timezone offset (WIB = UTC+7)
     const nowWIB = new Date(serverTime.getTime() + (7 * 60 * 60 * 1000));
     const diffMinutes = differenceInMinutes(nowWIB, meetingStartDateTime);
 
@@ -103,7 +153,6 @@ export async function POST(request: Request) {
 
        if (deviceCheck && deviceCheck.length > 0) {
          is_suspicious = true;
-         // Log into security_logs table
          await supabase.from('security_logs').insert([{
             meeting_id: meetingId,
             name: name,
@@ -134,8 +183,6 @@ export async function POST(request: Request) {
         const buffer = Buffer.from(base64Data, 'base64');
         const fileName = `${meetingId}/${name.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.jpg`;
 
-        console.log(`[Photo] Attempting upload: ${fileName} (${buffer.length} bytes)`);
-
         const { error: uploadError } = await supabase.storage
           .from('attendance-photos')
           .upload(fileName, buffer, {
@@ -145,13 +192,11 @@ export async function POST(request: Request) {
 
         if (uploadError) {
           console.error('[Photo] Upload Error:', uploadError.message, uploadError);
-          // Don't fail the whole attendance if upload fails, but log it
         } else {
           const { data: urlData } = supabase.storage
             .from('attendance-photos')
             .getPublicUrl(fileName);
           photo_url = urlData?.publicUrl || null;
-          console.log('[Photo] Upload Success:', photo_url);
         }
       } catch (photoErr: any) {
         console.error('[Photo] Processing Error:', photoErr.message);
@@ -177,7 +222,7 @@ export async function POST(request: Request) {
     if (email && process.env.SMTP_HOST) {
       try {
         const meetingDateFormatted = format(new Date(meeting.date), 'dd MMMM yyyy');
-        
+
         await sendAttendanceEmail(email, {
           name,
           meetingTitle: meeting.title,
@@ -187,13 +232,84 @@ export async function POST(request: Request) {
         });
       } catch (emailError) {
         console.error('[Email] Failed to send:', emailError);
-        // Don't fail the attendance if email fails
       }
     }
 
     return NextResponse.json({ success: true, status, emailSent: !!email });
   } catch (error: any) {
     console.error(error);
+    return NextResponse.json({ error: 'Server error: ' + error.message }, { status: 500 });
+  }
+}
+
+// ─── PUT: Mark Alfa (Admin Only) ───
+// Marks all registered students who did NOT attend a meeting as "Alfa"
+export async function PUT(request: Request) {
+  if (!verifyAdminToken(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const body = await request.json();
+    const { meetingId } = body;
+
+    if (!meetingId) {
+      return NextResponse.json({ error: 'meetingId is required.' }, { status: 400 });
+    }
+
+    // 1. Get all registered students
+    const { data: allStudents, error: studentsError } = await supabase
+      .from('user_profiles')
+      .select('name, division');
+
+    if (studentsError) throw studentsError;
+    if (!allStudents || allStudents.length === 0) {
+      return NextResponse.json({ error: 'No registered students found.' }, { status: 400 });
+    }
+
+    // 2. Get existing attendance for this meeting
+    const { data: existingAttendance, error: attError } = await supabase
+      .from('attendance')
+      .select('name')
+      .eq('meeting_id', meetingId);
+
+    if (attError) throw attError;
+
+    const attendedNames = new Set(
+      (existingAttendance || []).map((a: any) => a.name.toLowerCase().trim())
+    );
+
+    // 3. Find absent students
+    const absentStudents = allStudents.filter(
+      (s: any) => !attendedNames.has(s.name.toLowerCase().trim())
+    );
+
+    if (absentStudents.length === 0) {
+      return NextResponse.json({ message: 'Semua mahasiswa sudah terabsen.', marked: 0 });
+    }
+
+    // 4. Insert "Alfa" records for absent students
+    const alfaRecords = absentStudents.map((s: any) => ({
+      meeting_id: meetingId,
+      name: s.name,
+      division: s.division,
+      status: 'Alfa',
+      device_id: 'auto-alfa',
+      is_suspicious: false,
+      created_at: new Date().toISOString()
+    }));
+
+    const { error: insertError } = await supabase.from('attendance').insert(alfaRecords);
+    if (insertError) throw insertError;
+
+    return NextResponse.json({
+      success: true,
+      message: `${absentStudents.length} mahasiswa ditandai Alfa.`,
+      marked: absentStudents.length,
+      names: absentStudents.map((s: any) => s.name)
+    });
+  } catch (error: any) {
+    console.error('[MarkAlfa] Error:', error);
     return NextResponse.json({ error: 'Server error: ' + error.message }, { status: 500 });
   }
 }

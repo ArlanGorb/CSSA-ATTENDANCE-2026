@@ -389,9 +389,11 @@ export default function AdminDashboard() {
       date: form.date.value,
       start_time: form.startTime.value,
       attendance_limit_minutes: parseInt(form.limit.value),
-
+      latitude: form.latitude?.value ? parseFloat(form.latitude.value) : null,
+      longitude: form.longitude?.value ? parseFloat(form.longitude.value) : null,
+      radius_meters: form.radius?.value ? parseInt(form.radius.value) : 100,
       is_archived: false,
-      qr_token: crypto.randomUUID(), // Initial token
+      qr_token: crypto.randomUUID(),
       qr_expiry: new Date(Date.now() + 60000 * 5).toISOString()
     }]);
 
@@ -485,6 +487,38 @@ export default function AdminDashboard() {
     doc.text(`Total Peserta: ${stats.total}`, 14, finalY + 43);
 
     doc.save(`Recap_${selectedMeeting.title}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+  };
+
+  // ─── MARK ALFA: Auto-mark absent students ───
+  const [markingAlfa, setMarkingAlfa] = useState(false);
+  const handleMarkAlfa = async () => {
+    if (!selectedMeeting) return;
+    if (!confirm(`Tandai semua mahasiswa yang tidak hadir di "${selectedMeeting.title}" sebagai Alfa?`)) return;
+
+    setMarkingAlfa(true);
+    try {
+      const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || '8182838485';
+      const res = await fetch('/api/attendance', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': adminPassword
+        },
+        body: JSON.stringify({ meetingId: selectedMeeting.id })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert(`${data.marked} mahasiswa ditandai Alfa.`);
+        fetchAttendance(selectedMeeting.id);
+      } else {
+        alert(data.error || 'Gagal menandai Alfa.');
+      }
+    } catch (err) {
+      alert('Kesalahan jaringan.');
+    } finally {
+      setMarkingAlfa(false);
+    }
   };
 
   const updateStatus = async (attendanceId: string, newStatus: string) => {
@@ -933,7 +967,25 @@ export default function AdminDashboard() {
                        <label className="block text-sm font-medium text-slate-700 mb-2">Tolerance (Minutes)</label>
                        <input name="limit" type="number" defaultValue={15} required className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
                     </div>
-                    
+
+                    {/* Geofencing Fields */}
+                    <div className="col-span-1 md:col-span-2">
+                       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 mt-2">Geofencing (Opsional)</p>
+                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div>
+                             <label className="block text-sm font-medium text-slate-700 mb-2">Latitude</label>
+                             <input name="latitude" type="number" step="any" placeholder="e.g. 1.3284" className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
+                          </div>
+                          <div>
+                             <label className="block text-sm font-medium text-slate-700 mb-2">Longitude</label>
+                             <input name="longitude" type="number" step="any" placeholder="e.g. 124.9867" className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
+                          </div>
+                          <div>
+                             <label className="block text-sm font-medium text-slate-700 mb-2">Radius (meter)</label>
+                             <input name="radius" type="number" defaultValue={100} placeholder="100" className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
+                          </div>
+                       </div>
+                    </div>
 
                     <div className="col-span-1 md:col-span-2 flex justify-end gap-3 mt-4 pt-4 border-t border-slate-100">
                       <button type="button" onClick={() => setCreateFormVisible(false)} className="px-6 py-2.5 text-slate-600 font-medium hover:bg-slate-50 border border-transparent hover:border-slate-200 rounded-xl transition-all">Cancel</button>
@@ -1303,12 +1355,20 @@ export default function AdminDashboard() {
 
                             </div>
                          </div>
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 flex-wrap">
                              <button onClick={handleExportCSV} className="flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold transition-all shadow-sm">
                                 <Download size={14} /> CSV
                              </button>
                              <button onClick={handleExportPDF} className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all shadow-sm">
                                 <Download size={14} /> PDF
+                             </button>
+                             <button 
+                               onClick={handleMarkAlfa} 
+                               disabled={markingAlfa || selectedMeeting?.is_archived}
+                               className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all shadow-sm"
+                             >
+                               {markingAlfa ? <RefreshCcw size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
+                               {markingAlfa ? 'Processing...' : 'Mark Alfa'}
                              </button>
                           </div>
                       </div>

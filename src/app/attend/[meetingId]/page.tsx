@@ -71,6 +71,8 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
   const [scanning, setScanning] = useState(false);
   const [deviceId, setDeviceId] = useState<string>('');
   const [showBreachAlert, setShowBreachAlert] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [geoError, setGeoError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const photoRef = useRef<string | null>(null);
 
@@ -171,6 +173,20 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
       setDeviceId(result.visitorId);
     };
     initFingerprint();
+
+    // Capture GPS location for geofencing
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setUserLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+        },
+        (err) => {
+          console.warn('[Geo] Location error:', err.message);
+          setGeoError('Tidak dapat mengakses lokasi. Geofencing mungkin gagal.');
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
 
     // SECURITY: Poison pill for admin session. 
     // If a student opens this page, ensure no admin session is active on this device.
@@ -455,6 +471,8 @@ export default function MemberAttendance({ params }: { params: { meetingId: stri
           division: profileToSubmit.division,
           deviceId: deviceId,
           photo: photoRef.current || undefined,
+          latitude: userLocation?.latitude,
+          longitude: userLocation?.longitude,
         })
       });
 
