@@ -1,9 +1,9 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 import { supabase } from '@/lib/supabase';
 import { QRCodeSVG } from 'qrcode.react';
-import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, Archive, RotateCcw, Terminal, ShieldAlert, Image as ImageIcon, Camera, Menu, UserCircle, Search, Upload, Loader2, Sparkles, BarChart2, FileText, BarChart3, ArrowUpRight } from 'lucide-react';
+import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, Archive, RotateCcw, Terminal, ShieldAlert, Image as ImageIcon, Camera, Menu, UserCircle, Search, Upload, Loader2, Sparkles, BarChart2, FileText, BarChart3, ArrowUpRight, UserPlus, ShieldCheck, ShieldOff } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 import * as faceapi from 'face-api.js';
 
@@ -68,6 +68,27 @@ export default function AdminDashboard() {
   const [selectedStudentSamples, setSelectedStudentSamples] = useState<any[]>([]);
   const [isDeletingSample, setIsDeletingSample] = useState<number | null>(null);
   const [managementStudent, setManagementStudent] = useState<FaceProfile | null>(null);
+
+  // Add New Student states
+  const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
+  const [newStudentName, setNewStudentName] = useState('');
+  const [newStudentDivision, setNewStudentDivision] = useState('');
+  const [addCameraActive, setAddCameraActive] = useState(false);
+  const [addFaceDetected, setAddFaceDetected] = useState(false);
+  const [addFaceBox, setAddFaceBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [addFaceConfidence, setAddFaceConfidence] = useState(0);
+  const [addDetectionStatus, setAddDetectionStatus] = useState('Siap');
+  const [addCapturing, setAddCapturing] = useState(false);
+  const [addCaptureProgress, setAddCaptureProgress] = useState(0);
+  const [addSubmitting, setAddSubmitting] = useState(false);
+  const [addSuccess, setAddSuccess] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+
+  // Refs for Add Student camera
+  const addVideoRef = useRef<HTMLVideoElement>(null);
+  const addStreamRef = useRef<MediaStream | null>(null);
+  const addDetectionLoop = useRef<NodeJS.Timeout | null>(null);
+  const addFaceConfirmCount = useRef(0);
 
 
   // Simple Auth Check
@@ -673,6 +694,177 @@ export default function AdminDashboard() {
     }
   };
 
+  // ─── ADD NEW STUDENT: Camera & Capture Functions ───
+  const ADD_CAPTURE_COUNT = 10;
+
+  const stopAddStudentCamera = () => {
+    if (addDetectionLoop.current) { clearInterval(addDetectionLoop.current); addDetectionLoop.current = null; }
+    if (addStreamRef.current) { addStreamRef.current.getTracks().forEach(t => t.stop()); addStreamRef.current = null; }
+    if (addVideoRef.current?.srcObject) {
+      (addVideoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+      addVideoRef.current.srcObject = null;
+    }
+    setAddCameraActive(false); setAddFaceDetected(false); setAddFaceBox(null);
+  };
+
+  const startAddStudentDetection = useCallback(() => {
+    if (!modelsLoaded || !addVideoRef.current) return;
+    addFaceConfirmCount.current = 0;
+    setAddFaceDetected(false); setAddFaceBox(null); setAddDetectionStatus('Memindai wajah...');
+
+    addDetectionLoop.current = setInterval(async () => {
+      if (!addVideoRef.current || addVideoRef.current.paused) return;
+      try {
+        const det = await faceapi
+          .detectSingleFace(addVideoRef.current!, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+          .withFaceLandmarks();
+
+        if (det) {
+          const vw = addVideoRef.current!.videoWidth, vh = addVideoRef.current!.videoHeight;
+          const area = (det.detection.box.width * det.detection.box.height) / (vw * vh);
+          if (area < 0.08) {
+            addFaceConfirmCount.current = Math.max(0, addFaceConfirmCount.current - 1);
+            setAddDetectionStatus('Dekatkan wajah ke kamera'); setAddFaceBox(null);
+          } else {
+            addFaceConfirmCount.current++;
+            setAddFaceConfidence(Math.round(det.detection.score * 100));
+            const dw = addVideoRef.current!.clientWidth, dh = addVideoRef.current!.clientHeight;
+            const sx = dw / vw, sy = dh / vh;
+            setAddFaceBox({
+              x: dw - (det.detection.box.x * sx) - (det.detection.box.width * sx),
+              y: det.detection.box.y * sy, width: det.detection.box.width * sx, height: det.detection.box.height * sy,
+            });
+            if (addFaceConfirmCount.current >= 5) {
+              setAddFaceDetected(true); setAddDetectionStatus('Wajah terkunci — siap ambil sampel');
+            } else {
+              setAddDetectionStatus(`Memverifikasi... (${addFaceConfirmCount.current}/5)`);
+            }
+          }
+        } else {
+          addFaceConfirmCount.current = Math.max(0, addFaceConfirmCount.current - 1);
+          setAddFaceBox(null);
+          if (addFaceConfirmCount.current === 0) { setAddFaceDetected(false); setAddDetectionStatus('Wajah tidak terdeteksi — lihat kamera'); }
+        }
+      } catch (err) { console.error('[AddStudent] Detection:', err); }
+    }, 300);
+  }, [modelsLoaded]);
+
+  const startAddStudentCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+      });
+      addStreamRef.current = stream;
+      setAddCameraActive(true); setAddError(null); setAddFaceDetected(false); setAddFaceBox(null);
+      addFaceConfirmCount.current = 0;
+      setTimeout(() => {
+        if (addVideoRef.current) {
+          addVideoRef.current.srcObject = stream;
+          addVideoRef.current.onloadeddata = () => startAddStudentDetection();
+        }
+      }, 100);
+    } catch { setAddError('Akses kamera diperlukan untuk pendaftaran wajah.'); }
+  };
+
+  const handleAddStudentCapture = async () => {
+    if (!addVideoRef.current || !modelsLoaded || !addFaceDetected) return;
+    if (!newStudentName.trim() || !newStudentDivision) { setAddError('Nama dan divisi harus diisi.'); return; }
+
+    setAddCapturing(true); setAddCaptureProgress(0); setAddError(null);
+    if (addDetectionLoop.current) { clearInterval(addDetectionLoop.current); addDetectionLoop.current = null; }
+
+    const descriptors: Float32Array[] = [];
+    let thumbnail: string | null = null;
+
+    for (let i = 0; i < ADD_CAPTURE_COUNT; i++) {
+      if (!addVideoRef.current) break;
+      try {
+        const det = await faceapi
+          .detectSingleFace(addVideoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }))
+          .withFaceLandmarks().withFaceDescriptor();
+
+        if (det) {
+          if (i === 0) thumbnail = await extractFaceThumbnail(addVideoRef.current as any, det.detection.box);
+          descriptors.push(det.descriptor);
+          setAddCaptureProgress(i + 1);
+        } else { i--; await new Promise(r => setTimeout(r, 200)); continue; }
+      } catch (err) { console.error(`[AddStudent] Capture ${i + 1}:`, err); }
+
+      if (i < ADD_CAPTURE_COUNT - 1) {
+        setAddDetectionStatus(`Sampel ${i + 1}/${ADD_CAPTURE_COUNT} — tahan posisi...`);
+        await new Promise(r => setTimeout(r, 600));
+      }
+    }
+
+    if (descriptors.length >= 3) {
+      await submitNewStudentProfile(descriptors, thumbnail);
+    } else {
+      setAddError(`Hanya ${descriptors.length} sampel. Minimal 3. Coba lagi.`);
+      setAddCapturing(false); startAddStudentDetection();
+    }
+  };
+
+  const handleAddStudentPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !modelsLoaded) return;
+    if (!newStudentName.trim() || !newStudentDivision) {
+      setAddError('Nama dan divisi harus diisi terlebih dahulu.');
+      return;
+    }
+
+    setAddSubmitting(true);
+    setAddDetectionStatus('Memproses foto...');
+    setAddError(null);
+
+    try {
+      const img = await faceapi.bufferToImage(file);
+      const detection = await faceapi
+        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.7 }))
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (!detection) {
+        setAddError('Wajah tidak terdeteksi dalam foto. Gunakan foto yang lebih jelas.');
+        setAddSubmitting(false);
+        return;
+      }
+
+      setAddDetectionStatus('Menghasilkan thumbnail...');
+      const thumbnail = await extractFaceThumbnail(img, detection.detection.box);
+
+      await submitNewStudentProfile([detection.descriptor], thumbnail);
+    } catch (err) {
+      console.error('[FaceAPI] Photo processing error:', err);
+      setAddError('Gagal memproses foto.');
+      setAddSubmitting(false);
+    }
+  };
+
+  const submitNewStudentProfile = async (descriptors: Float32Array[], thumbnail: string | null) => {
+    setAddSubmitting(true); setAddDetectionStatus('Menyimpan profil wajah...');
+    try {
+      const avg = new Float32Array(128);
+      for (let i = 0; i < 128; i++) { let s = 0; for (const d of descriptors) s += d[i]; avg[i] = s / descriptors.length; }
+
+      const res = await fetch('/api/face-profiles', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newStudentName.trim(), division: newStudentDivision, faceDescriptor: [Array.from(avg)], thumbnails: thumbnail ? [thumbnail] : undefined }),
+      });
+      const data = await res.json();
+      if (res.ok) { setAddSuccess(true); stopAddStudentCamera(); fetchAllStudents(); }
+      else { setAddError(data.error || 'Gagal menyimpan profil.'); setAddCapturing(false); startAddStudentDetection(); }
+    } catch { setAddError('Kesalahan jaringan.'); setAddCapturing(false); startAddStudentDetection(); }
+    finally { setAddSubmitting(false); }
+  };
+
+  const resetAddStudentModal = () => {
+    stopAddStudentCamera();
+    setIsAddStudentOpen(false); setNewStudentName(''); setNewStudentDivision('');
+    setAddCameraActive(false); setAddFaceDetected(false); setAddFaceBox(null);
+    setAddCapturing(false); setAddCaptureProgress(0); setAddSubmitting(false);
+    setAddSuccess(false); setAddError(null);
+  };
+
   const deleteAttendance = async (attendanceId: string, memberName: string) => {
     if (confirm(`Are you sure you want to delete ${memberName}?`)) {
       const { error } = await supabase.from('attendance').delete().eq('id', attendanceId);
@@ -1132,15 +1324,24 @@ export default function AdminDashboard() {
                       <h2 className="text-xl font-bold text-slate-800">Manajemen Mahasiswa</h2>
                       <p className="text-sm text-slate-500 mt-1">Kelola profil wajah dan pelatihan AI untuk mahasiswa.</p>
                     </div>
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                      <input 
-                        type="text" 
-                        placeholder="Cari nama atau divisi..." 
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setIsAddStudentOpen(true)}
+                        className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-xl text-sm transition-all shadow-sm shrink-0"
+                      >
+                        <UserPlus size={16} />
+                        Tambah Mahasiswa
+                      </button>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input 
+                          type="text" 
+                          placeholder="Cari nama atau divisi..." 
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-64 shadow-sm"
                       />
+                      </div>
                     </div>
                   </div>
                   
@@ -1497,6 +1698,121 @@ export default function AdminDashboard() {
                     </div>
                 </div>
             </div>
+        )}
+
+        {/* Add Student Modal */}
+        {isAddStudentOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
+            <div className="bg-white max-w-md w-full rounded-3xl overflow-hidden shadow-2xl animate-zoom-in">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
+                    <UserPlus size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800">Tambah Mahasiswa</h3>
+                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Input Data & Foto Wajah</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => !addSubmitting && resetAddStudentModal()}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-8">
+                {addSuccess ? (
+                  <div className="text-center py-6 animate-fade-in">
+                    <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <CheckCircle size={32} />
+                    </div>
+                    <h4 className="text-lg font-bold text-slate-800">Berhasil!</h4>
+                    <p className="text-slate-500 text-sm mt-1">Mahasiswa {newStudentName} berhasil ditambahkan.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Nama Lengkap</label>
+                      <input
+                        type="text"
+                        value={newStudentName}
+                        onChange={(e) => setNewStudentName(e.target.value)}
+                        placeholder="Masukkan nama"
+                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-4 py-3 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                        disabled={addSubmitting}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Divisi</label>
+                      <select
+                        value={newStudentDivision}
+                        onChange={(e) => setNewStudentDivision(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-4 py-3 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                        disabled={addSubmitting}
+                      >
+                        <option value="">Pilih Divisi</option>
+                        {DIVISIONS.map((div) => (
+                          <option key={div} value={div}>{div}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {addError && (
+                      <div className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-start gap-2 text-red-600 animate-shake">
+                        <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                        <p className="text-xs font-semibold">{addError}</p>
+                      </div>
+                    )}
+
+                    <input
+                      type="file"
+                      id="add-student-photo-upload"
+                      accept="image/*"
+                      onChange={handleAddStudentPhotoUpload}
+                      className="hidden"
+                      disabled={addSubmitting}
+                    />
+
+                    <label
+                      htmlFor="add-student-photo-upload"
+                      className={`w-full py-6 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-3 transition-all ${
+                        addSubmitting 
+                          ? 'bg-slate-50 border-slate-200 cursor-not-allowed' 
+                          : 'bg-white border-slate-200 hover:border-blue-400 hover:bg-blue-50/30 cursor-pointer'
+                      }`}
+                    >
+                      {addSubmitting ? (
+                        <>
+                          <Loader2 size={32} className="text-blue-500 animate-spin" />
+                          <span className="text-sm font-bold text-slate-600">{addDetectionStatus}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload size={32} className="text-slate-300" />
+                          <div className="text-center">
+                            <span className="text-sm font-bold text-slate-700 block">Unggah Foto Wajah</span>
+                            <span className="text-[10px] text-slate-400">Pastikan foto jelas & hadap depan</span>
+                          </div>
+                        </>
+                      )}
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <button
+                  onClick={resetAddStudentModal}
+                  disabled={addSubmitting}
+                  className="px-6 py-2 text-slate-600 font-bold text-sm hover:text-slate-800 disabled:opacity-50"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Face Training Modal */}
