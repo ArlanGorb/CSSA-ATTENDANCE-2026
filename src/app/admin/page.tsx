@@ -548,36 +548,53 @@ export default function AdminDashboard() {
   };
 
   const handleTrainingUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !modelsLoaded || !trainingStudent) return;
+    const files = e.target.files;
+    if (!files || files.length === 0 || !modelsLoaded || !trainingStudent) return;
 
     setSubmitting(true);
-    setTrainingStatus('Memproses foto...');
+    setTrainingStatus(`Memproses ${files.length} foto...`);
     setError(null);
 
-    try {
-      const img = await faceapi.bufferToImage(file);
-      const detection = await faceapi
-        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.7 })) // Increased from 0.5
-        .withFaceLandmarks()
-        .withFaceDescriptor();
+    const descriptors: Float32Array[] = [];
+    const thumbnails: string[] = [];
+    let successCount = 0;
 
-      if (!detection) {
-        setError('Wajah tidak terdeteksi dalam foto. Gunakan foto yang lebih jelas.');
-        setSubmitting(false);
-        return;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type === 'image/heic' || file.name.toLowerCase().endsWith('.heic')) {
+         setError(`Format HEIC (${file.name}) tidak didukung. Dilewati.`);
+         continue;
       }
 
-      // Extract Thumbnail
-      setTrainingStatus('Menghasilkan thumbnail...');
-      const thumbnail = await extractFaceThumbnail(img, detection.detection.box);
+      try {
+        const img = await faceapi.bufferToImage(file).catch(() => {
+           throw new Error(`Browser gagal membaca gambar ${file.name}.`);
+        });
+        const detection = await faceapi
+          .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.7 }))
+          .withFaceLandmarks()
+          .withFaceDescriptor();
 
-      await submitFaceProfile([detection.descriptor], [thumbnail]);
-    } catch (err) {
-      console.error('[FaceAPI] Photo processing error:', err);
-      setError('Gagal memproses foto.');
-      setSubmitting(false);
+        if (detection) {
+          descriptors.push(detection.descriptor);
+          const thumb = await extractFaceThumbnail(img, detection.detection.box);
+          thumbnails.push(thumb);
+          successCount++;
+          setTrainingStatus(`Berhasil memproses ${successCount}/${files.length} foto...`);
+        }
+      } catch (err: any) {
+        console.error('[FaceAPI] Photo processing error for', file.name, err);
+      }
     }
+
+    if (descriptors.length === 0) {
+      setError('Tidak ada wajah yang berhasil dideteksi dari foto yang diunggah.');
+      setSubmitting(false);
+      return;
+    }
+
+    setTrainingStatus('Menyimpan sampel pelatihan...');
+    await submitFaceProfile(descriptors, thumbnails);
   };
 
   const extractFaceThumbnail = (img: HTMLImageElement, box: faceapi.Box): Promise<string> => {
@@ -805,50 +822,87 @@ export default function AdminDashboard() {
   };
 
   const handleAddStudentPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !modelsLoaded) return;
+    const files = e.target.files;
+    if (!files || files.length === 0 || !modelsLoaded) return;
     if (!newStudentName.trim() || !newStudentDivision) {
       setAddError('Nama dan divisi harus diisi terlebih dahulu.');
       return;
     }
 
     setAddSubmitting(true);
-    setAddDetectionStatus('Memproses foto...');
+    setAddDetectionStatus(`Memproses ${files.length} foto...`);
     setAddError(null);
 
-    try {
-      const img = await faceapi.bufferToImage(file);
-      const detection = await faceapi
-        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.7 }))
-        .withFaceLandmarks()
-        .withFaceDescriptor();
+    const descriptors: Float32Array[] = [];
+    const thumbnails: string[] = [];
+    let successCount = 0;
 
-      if (!detection) {
-        setAddError('Wajah tidak terdeteksi dalam foto. Gunakan foto yang lebih jelas.');
-        setAddSubmitting(false);
-        return;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type === 'image/heic' || file.name.toLowerCase().endsWith('.heic')) {
+         setAddError(`Format HEIC (${file.name}) tidak didukung. Dilewati.`);
+         continue;
       }
 
-      setAddDetectionStatus('Menghasilkan thumbnail...');
-      const thumbnail = await extractFaceThumbnail(img, detection.detection.box);
+      try {
+        const img = await faceapi.bufferToImage(file).catch(() => {
+           throw new Error(`Browser gagal membaca gambar ${file.name}.`);
+        });
+        const detection = await faceapi
+          .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.7 }))
+          .withFaceLandmarks()
+          .withFaceDescriptor();
 
-      await submitNewStudentProfile([detection.descriptor], thumbnail);
-    } catch (err) {
-      console.error('[FaceAPI] Photo processing error:', err);
-      setAddError('Gagal memproses foto.');
-      setAddSubmitting(false);
+        if (detection) {
+          descriptors.push(detection.descriptor);
+          const thumb = await extractFaceThumbnail(img, detection.detection.box);
+          thumbnails.push(thumb);
+          successCount++;
+          setAddDetectionStatus(`Berhasil memproses ${successCount}/${files.length} foto...`);
+        }
+      } catch (err: any) {
+        console.error('[FaceAPI] Photo processing error for', file.name, err);
+      }
     }
+
+    if (descriptors.length === 0) {
+      setAddError('Tidak ada wajah yang berhasil dideteksi dalam foto.');
+      setAddSubmitting(false);
+      return;
+    }
+
+    // Since these are distinct photos, we don't average them if there are multiple.
+    await submitNewStudentProfile(descriptors, null, false, thumbnails);
   };
 
-  const submitNewStudentProfile = async (descriptors: Float32Array[], thumbnail: string | null) => {
+  const submitNewStudentProfile = async (
+    descriptors: Float32Array[], 
+    thumbnail: string | null,
+    shouldAverage = true,
+    thumbnailsArray?: string[]
+  ) => {
     setAddSubmitting(true); setAddDetectionStatus('Menyimpan profil wajah...');
     try {
-      const avg = new Float32Array(128);
-      for (let i = 0; i < 128; i++) { let s = 0; for (const d of descriptors) s += d[i]; avg[i] = s / descriptors.length; }
+      let payloadDescriptors;
+      let payloadThumbnails = thumbnailsArray;
+
+      if (shouldAverage) {
+        const avg = new Float32Array(128);
+        for (let i = 0; i < 128; i++) { let s = 0; for (const d of descriptors) s += d[i]; avg[i] = s / descriptors.length; }
+        payloadDescriptors = [Array.from(avg)];
+        if (thumbnail) payloadThumbnails = [thumbnail];
+      } else {
+        payloadDescriptors = descriptors.map(d => Array.from(d));
+      }
 
       const res = await fetch('/api/face-profiles', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newStudentName.trim(), division: newStudentDivision, faceDescriptor: [Array.from(avg)], thumbnails: thumbnail ? [thumbnail] : undefined }),
+        body: JSON.stringify({ 
+          name: newStudentName.trim(), 
+          division: newStudentDivision, 
+          faceDescriptor: payloadDescriptors, 
+          thumbnails: payloadThumbnails 
+        }),
       });
       const data = await res.json();
       if (res.ok) { setAddSuccess(true); stopAddStudentCamera(); fetchAllStudents(); }
@@ -1770,6 +1824,7 @@ export default function AdminDashboard() {
                       type="file"
                       id="add-student-photo-upload"
                       accept="image/*"
+                      multiple
                       onChange={handleAddStudentPhotoUpload}
                       className="hidden"
                       disabled={addSubmitting}
@@ -1793,7 +1848,7 @@ export default function AdminDashboard() {
                           <Upload size={32} className="text-slate-300" />
                           <div className="text-center">
                             <span className="text-sm font-bold text-slate-700 block">Unggah Foto Wajah</span>
-                            <span className="text-[10px] text-slate-400">Pastikan foto jelas & hadap depan</span>
+                            <span className="text-[10px] text-slate-400">Bisa pilih lebih dari 1 foto (JPG/PNG)</span>
                           </div>
                         </>
                       )}
@@ -1865,6 +1920,7 @@ export default function AdminDashboard() {
                       type="file"
                       id="admin-photo-upload"
                       accept="image/*"
+                      multiple
                       onChange={handleTrainingUpload}
                       className="hidden"
                       disabled={submitting}
@@ -1888,7 +1944,7 @@ export default function AdminDashboard() {
                           <Upload size={32} className="text-slate-300" />
                           <div className="text-center">
                             <span className="text-sm font-bold text-slate-700 block">Pilih Foto</span>
-                            <span className="text-[10px] text-slate-400">JPG, PNG atau WEBP</span>
+                            <span className="text-[10px] text-slate-400">Bisa pilih lebih dari 1 foto (JPG/PNG)</span>
                           </div>
                         </>
                       )}
