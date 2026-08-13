@@ -29,7 +29,7 @@ export default function RegisterMember() {
         { 
           fps: 10, 
           qrbox: { width: 250, height: 100 },
-          supportedScanTypes: [] // Default supports all 1D and 2D barcodes
+          videoConstraints: { facingMode: "environment" }
         },
         false
       );

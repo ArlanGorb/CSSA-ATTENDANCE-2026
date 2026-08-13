@@ -30,7 +30,7 @@ export default function AttendBarcode({ params }: { params: { meetingId: string 
         { 
           fps: 10, 
           qrbox: { width: 300, height: 150 },
-          supportedScanTypes: [] // Supports 1D (Barcode) and 2D (QR)
+          videoConstraints: { facingMode: "environment" }
         },
         false
       );
