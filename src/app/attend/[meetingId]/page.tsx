@@ -49,6 +49,7 @@ export default function AttendBarcode({ params }: { params: { meetingId: string 
     return () => {
       stopScanner();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showScanner]);
 
   const startScanner = () => {

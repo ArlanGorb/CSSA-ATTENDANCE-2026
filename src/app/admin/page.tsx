@@ -141,7 +141,7 @@ export default function AdminDashboard() {
     fetch('/api/profiles')
       .then(res => res.json())
       .then(data => {
-        if (data.profiles) setProfiles(data.profiles);
+        if (data.profiles) setAllStudents(data.profiles);
       });
     } catch (err) {
       console.error("Error fetching students:", err);
