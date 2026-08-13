@@ -32,7 +32,7 @@ const ENDPOINT_CONFIGS: Record<string, RateLimitConfig> = {
     interval: 60 * 1000, // 1 minute
     maxRequests: 5, // 5 requests per minute (strict for attendance)
   },
-  '/api/face-profiles': {
+  '/api/profiles': {
     interval: 60 * 1000, // 1 minute
     maxRequests: 20, // 20 requests per minute (for face recognition)
   },

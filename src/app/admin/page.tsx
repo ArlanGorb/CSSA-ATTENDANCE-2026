@@ -137,11 +137,12 @@ export default function AdminDashboard() {
 
   const fetchAllStudents = async () => {
     try {
-      const res = await fetch('/api/face-profiles');
-      const data = await res.json();
-      if (data.profiles) {
-        setAllStudents(data.profiles);
-      }
+      // Fetch Profiles
+    fetch('/api/profiles')
+      .then(res => res.json())
+      .then(data => {
+        if (data.profiles) setProfiles(data.profiles);
+      });
     } catch (err) {
       console.error("Error fetching students:", err);
     }
@@ -629,7 +630,7 @@ export default function AdminDashboard() {
     try {
       const payloadDescriptors = descriptors.map(d => Array.from(d));
 
-      const res = await fetch('/api/face-profiles', {
+      const res = await fetch('/api/profiles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -664,7 +665,7 @@ export default function AdminDashboard() {
     setLoading(true);
     setManagementStudent(student);
     try {
-      const res = await fetch(`/api/face-profiles?name=${encodeURIComponent(student.name)}`);
+      const res = await fetch(`/api/profiles?name=${encodeURIComponent(student.name)}`);
       const data = await res.json();
       if (data.profile) {
         let raw = data.profile.face_descriptor;
@@ -687,7 +688,7 @@ export default function AdminDashboard() {
     
     setIsDeletingSample(index);
     try {
-      const res = await fetch('/api/face-profiles', {
+      const res = await fetch('/api/profiles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -895,7 +896,7 @@ export default function AdminDashboard() {
         payloadDescriptors = descriptors.map(d => Array.from(d));
       }
 
-      const res = await fetch('/api/face-profiles', {
+      const res = await fetch('/api/profiles', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           name: newStudentName.trim(), 

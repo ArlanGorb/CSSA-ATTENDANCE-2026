@@ -1,356 +1,78 @@
 'use client';
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Camera, XCircle, CheckCircle, AlertOctagon, ScanLine, ShieldCheck, ShieldOff, UserPlus, Loader2, ArrowLeft, Sparkles, ExternalLink, Image as ImageIcon } from 'lucide-react';
-import * as faceapi from 'face-api.js';
+import { useState, useEffect, useRef } from 'react';
+import { Camera, XCircle, UserPlus, ArrowLeft, Loader2, Barcode, CheckCircle, AlertOctagon } from 'lucide-react';
 import Link from 'next/link';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 
 const DIVISIONS = [
   "Officer", "Kerohanian", "Mulmed", "Senat Angkatan",
   "Olahraga", "Humas", "Keamanan", "Pendidikan", "Parlemanterian"
 ];
 
-const CAPTURE_COUNT = 10; // Increased from 5 for higher accuracy
-const CAPTURE_INTERVAL_MS = 600; // Time between captures
-const FACE_SCORE_THRESHOLD = 0.55; 
-const FACE_MATCH_THRESHOLD = 0.50; // Consistent with attendance page
-
-type FaceProfile = {
-  id: string;
-  name: string;
-  division: string;
-  face_descriptor: number[] | number[][];
-};
-
-export default function RegisterFace() {
-  const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [modelLoadError, setModelLoadError] = useState<string | null>(null);
-
-  // Form states
+export default function RegisterMember() {
   const [name, setName] = useState('');
   const [division, setDivision] = useState('');
-
-  // Camera states
-  const [showCamera, setShowCamera] = useState(false);
-  const [faceDetected, setFaceDetected] = useState(false);
-  const [faceBox, setFaceBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const [faceConfidence, setFaceConfidence] = useState(0);
-  const [detectionStatus, setDetectionStatus] = useState('Memuat AI...');
-
-  // Capture states
-  const [capturing, setCapturing] = useState(false);
-  const [captureProgress, setCaptureProgress] = useState(0);
-  const [capturedDescriptors, setCapturedDescriptors] = useState<Float32Array[]>([]);
-
-  // Result states
+  const [noreg, setNoreg] = useState('');
+  
+  const [showScanner, setShowScanner] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [resultMessage, setResultMessage] = useState('');
 
-  // Duplicate detection states
-  const [faceProfiles, setFaceProfiles] = useState<FaceProfile[]>([]);
-  const [duplicateFound, setDuplicateFound] = useState<{ name: string; division: string } | null>(null);
-  const labeledDescriptors = useRef<faceapi.LabeledFaceDescriptors[]>([]);
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const detectionLoop = useRef<NodeJS.Timeout | null>(null);
-  const faceConfirmCount = useRef(0);
-
-  // Load face-api.js models
   useEffect(() => {
-    const loadModels = async () => {
-      try {
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-          faceapi.nets.ssdMobilenetv1.loadFromUri('/models'),
-          faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
-          faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
-        ]);
-        setModelsLoaded(true);
-        setDetectionStatus('AI Siap');
-        console.log('[FaceAPI] All models loaded for registration');
-      } catch (err) {
-        console.error('[FaceAPI] Model load error:', err);
-        setModelLoadError('Gagal memuat model AI. Silakan muat ulang.');
-        setDetectionStatus('Kesalahan AI');
-      }
-    };
-    loadModels();
-    fetchProfiles();
-  }, []);
+    if (showScanner) {
+      // Initialize the scanner
+      scannerRef.current = new Html5QrcodeScanner(
+        "reader",
+        { 
+          fps: 10, 
+          qrbox: { width: 250, height: 100 },
+          supportedScanTypes: [] // Default supports all 1D and 2D barcodes
+        },
+        false
+      );
 
-  const fetchProfiles = async () => {
-    try {
-      const res = await fetch('/api/face-profiles');
-      const data = await res.json();
-      if (data.profiles && data.profiles.length > 0) {
-        setFaceProfiles(data.profiles);
-        const labeled = data.profiles
-          .filter((p: FaceProfile) => p.face_descriptor && (p.face_descriptor as any).length > 0)
-          .map((p: FaceProfile) => {
-            // Already standardized in API to number[][]
-            const descriptors: Float32Array[] = (p.face_descriptor as number[][]).map((d: any) => new Float32Array(d));
-
-            return new faceapi.LabeledFaceDescriptors(
-              `${p.name}|||${p.division}`,
-              descriptors
-            );
-          });
-        labeledDescriptors.current = labeled;
-      }
-    } catch (err) {
-      console.error('[FaceAPI] Failed to fetch profiles for duplicate check:', err);
-    }
-  };
-
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      if (detectionLoop.current) clearInterval(detectionLoop.current);
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, []);
-
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+      scannerRef.current.render((decodedText) => {
+        setNoreg(decodedText);
+        stopScanner();
+      }, (error) => {
+        // scan errors are noisy, ignore them
       });
-      streamRef.current = stream;
-      setShowCamera(true);
-      setError(null);
-      setFaceDetected(false);
-      setFaceBox(null);
-      faceConfirmCount.current = 0;
-
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadeddata = () => {
-            startFaceDetection();
-          };
-        }
-      }, 100);
-    } catch (err) {
-      setError('Akses kamera diperlukan untuk pendaftaran wajah.');
     }
+
+    return () => {
+      stopScanner();
+    };
+  }, [showScanner]);
+
+  const stopScanner = () => {
+    if (scannerRef.current) {
+      scannerRef.current.clear().catch(e => console.error("Failed to clear scanner", e));
+      scannerRef.current = null;
+    }
+    setShowScanner(false);
   };
 
-  const stopCamera = () => {
-    if (detectionLoop.current) {
-      clearInterval(detectionLoop.current);
-      detectionLoop.current = null;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !division || !noreg) {
+      setError("Semua field wajib diisi.");
+      return;
     }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
-    setShowCamera(false);
-    setFaceDetected(false);
-    setFaceBox(null);
-  };
 
-  const startFaceDetection = useCallback(() => {
-    if (!modelsLoaded || !videoRef.current) return;
-
-    faceConfirmCount.current = 0;
-    setFaceDetected(false);
-    setFaceBox(null);
-    setDetectionStatus('Memindai wajah...');
-
-    detectionLoop.current = setInterval(async () => {
-      if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) return;
-
-      try {
-        // We use full detection (landmarks + descriptor) for duplicate check
-        const fullDetection = await faceapi
-          .detectSingleFace(videoRef.current!, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 }))
-          .withFaceLandmarks()
-          .withFaceDescriptor();
-
-        if (fullDetection) {
-          const videoWidth = videoRef.current.videoWidth;
-          const videoHeight = videoRef.current.videoHeight;
-          const faceArea = (fullDetection.detection.box.width * fullDetection.detection.box.height) / (videoWidth * videoHeight);
-
-          if (faceArea < 0.08) {
-            setDetectionStatus('Dekatkan wajah ke kamera');
-            setFaceBox(null);
-            faceConfirmCount.current = Math.max(0, faceConfirmCount.current - 1);
-            setDuplicateFound(null);
-          } else {
-            // DUPLICATE FACE CHECK
-            if (labeledDescriptors.current.length > 0) {
-              const matcher = new faceapi.FaceMatcher(labeledDescriptors.current, FACE_MATCH_THRESHOLD);
-              const bestMatch = matcher.findBestMatch(fullDetection.descriptor);
-              
-              if (bestMatch.label !== 'unknown') {
-                const [dName, dDiv] = bestMatch.label.split('|||');
-                setDuplicateFound({ name: dName, division: dDiv });
-                setDetectionStatus('WAJAH TERDAFTAR');
-              } else {
-                setDuplicateFound(null);
-              }
-            }
-
-            faceConfirmCount.current++;
-            setFaceConfidence(Math.round(fullDetection.detection.score * 100));
-
-            const displayWidth = videoRef.current.clientWidth;
-            const displayHeight = videoRef.current.clientHeight;
-            const scaleX = displayWidth / videoWidth;
-            const scaleY = displayHeight / videoHeight;
-
-            setFaceBox({
-              x: displayWidth - (fullDetection.detection.box.x * scaleX) - (fullDetection.detection.box.width * scaleX),
-              y: fullDetection.detection.box.y * scaleY,
-              width: fullDetection.detection.box.width * scaleX,
-              height: fullDetection.detection.box.height * scaleY,
-            });
-
-            if (faceConfirmCount.current >= 5) {
-              setFaceDetected(true);
-              if (!duplicateFound) {
-                setDetectionStatus('Wajah terkunci — siap ambil sampel');
-              }
-            } else {
-              setDetectionStatus(`Memverifikasi wajah... (${faceConfirmCount.current}/5)`);
-            }
-          }
-        } else {
-          faceConfirmCount.current = Math.max(0, faceConfirmCount.current - 1);
-          setFaceBox(null);
-          setDuplicateFound(null);
-          if (faceConfirmCount.current === 0) {
-            setFaceDetected(false);
-            setDetectionStatus('Wajah tidak terdeteksi — lihat kamera');
-          }
-        }
-      } catch (err) {
-        console.error('[FaceAPI] Detection error:', err);
-      }
-    }, 300);
-  }, [modelsLoaded, duplicateFound]);
-
-  // Capture multiple face descriptors
-  const handleCapture = async () => {
-    if (!videoRef.current || !modelsLoaded || !faceDetected) return;
-
-    setCapturing(true);
-    setCaptureProgress(0);
-    setCapturedDescriptors([]);
+    setSubmitting(true);
     setError(null);
 
-    // Stop real-time detection box updates during capture
-    if (detectionLoop.current) {
-      clearInterval(detectionLoop.current);
-      detectionLoop.current = null;
-    }
-
-    const descriptors: Float32Array[] = [];
-    let thumbnail: string | null = null;
-
-    for (let i = 0; i < CAPTURE_COUNT; i++) {
-      if (!videoRef.current) break;
-
-      try {
-        // ULTRA-PRECISION: Use SsdMobilenetv1 for all registration samples
-        const detection = await faceapi
-          .detectSingleFace(videoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }))
-          .withFaceLandmarks()
-          .withFaceDescriptor();
-
-        if (detection) {
-          // FINAL DUPLICATE CHECK on the first stable capture
-          if (i === 0 && labeledDescriptors.current.length > 0) {
-            const matcher = new faceapi.FaceMatcher(labeledDescriptors.current, FACE_MATCH_THRESHOLD);
-            const match = matcher.findBestMatch(detection.descriptor);
-            if (match.label !== 'unknown' && !match.label.startsWith(name.trim())) {
-              const [dName, dDiv] = match.label.split('|||');
-              setDuplicateFound({ name: dName, division: dDiv });
-              setCapturing(false);
-              startFaceDetection();
-              return;
-            }
-          }
-
-          // Capture thumbnail on the first successful detection
-          if (i === 0) {
-            thumbnail = await extractFaceThumbnail(videoRef.current, detection.detection.box);
-          }
-
-          descriptors.push(detection.descriptor);
-          setCaptureProgress(i + 1);
-        } else {
-          // Face lost during capture — retry this frame
-          i--;
-          await new Promise(r => setTimeout(r, 200));
-          continue;
-        }
-      } catch (err) {
-        console.error(`[FaceAPI] Capture ${i + 1} error:`, err);
-      }
-
-      // Wait between captures for slightly different angles
-      if (i < CAPTURE_COUNT - 1) {
-        setDetectionStatus(`Sampel ${i + 1}/${CAPTURE_COUNT} diambil — tahan posisi...`);
-        await new Promise(r => setTimeout(r, CAPTURE_INTERVAL_MS));
-      }
-    }
-
-    if (descriptors.length >= 3) {
-      setCapturedDescriptors(descriptors);
-      setDetectionStatus(`✓ ${descriptors.length} sampel wajah diambil!`);
-
-      // Submit to API
-      await submitFaceProfile(descriptors, false, thumbnail ? [thumbnail] : undefined);
-    } else {
-      setError(`Only captured ${descriptors.length} face samples. Need at least 3. Please try again.`);
-      setCapturing(false);
-      startFaceDetection(); // Restart detection
-    }
-  };
-
-  const submitFaceProfile = async (descriptors: Float32Array[], isTraining = false, thumbnails?: string[]) => {
-    setSubmitting(true);
-    setDetectionStatus(isTraining ? 'Menambahkan sampel pelatihan...' : 'Menyimpan profil wajah...');
-
     try {
-      let payloadDescriptors: any;
-      
-      if (isTraining) {
-        // Training sample from photo - we send the single descriptor as an array
-        payloadDescriptors = descriptors.map(d => Array.from(d));
-      } else {
-        // Average the descriptors
-        const avgDescriptor = new Float32Array(128);
-        for (let i = 0; i < 128; i++) {
-          let sum = 0;
-          for (const desc of descriptors) {
-            sum += desc[i];
-          }
-          avgDescriptor[i] = sum / descriptors.length;
-        }
-        payloadDescriptors = [Array.from(avgDescriptor)]; // Wrap in array to match [{descriptor, thumbnail}] format
-      }
-
-      const res = await fetch('/api/face-profiles', {
+      const res = await fetch('/api/profiles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
           division,
-          faceDescriptor: payloadDescriptors,
-          thumbnails: thumbnails,
-          action: isTraining ? 'append' : undefined
+          noreg: noreg.trim(),
         }),
       });
 
@@ -358,149 +80,38 @@ export default function RegisterFace() {
 
       if (res.ok) {
         setSuccess(true);
-        setResultMessage(isTraining 
-          ? `Sampel pelatihan untuk "${name}" berhasil ditambahkan!`
-          : data.updated
-            ? `Profil wajah "${name}" telah diperbarui!`
-            : `Profil wajah "${name}" berhasil didaftarkan!`
-        );
-        stopCamera();
-        fetchProfiles(); // Refresh local matcher with most recent data
       } else {
-        if (data.isDuplicate && data.name) {
-          setDuplicateFound({ name: data.name, division: data.division });
-        } else {
-          setError(data.error || 'Gagal menyimpan profil wajah.');
-        }
-        setCapturing(false);
-        if (showCamera) startFaceDetection();
+        setError(data.error || 'Gagal menyimpan profil.');
       }
     } catch (err) {
       setError('Kesalahan jaringan. Silakan coba lagi.');
-      setCapturing(false);
-      if (showCamera) startFaceDetection();
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !modelsLoaded) return;
-
-    setSubmitting(true);
-    setDetectionStatus('Mendeteksi wajah (Deep Analysis)...');
-    setError(null);
-    setDuplicateFound(null);
-
-    try {
-      const img = await faceapi.bufferToImage(file);
-      const detection = await faceapi
-        .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.7 })) // Raised from 0.5
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-
-      if (!detection) {
-        setError('Wajah tidak terdeteksi dalam foto. Gunakan foto yang lebih jelas.');
-        setSubmitting(false);
-        return;
-      }
-
-      // Check if this person is already registered as someone else
-      if (labeledDescriptors.current.length > 0) {
-        const matcher = new faceapi.FaceMatcher(labeledDescriptors.current, FACE_MATCH_THRESHOLD);
-        const match = matcher.findBestMatch(detection.descriptor);
-        if (match.label !== 'unknown' && !match.label.split('|||')[0].includes(name.trim())) {
-          const [dName, dDiv] = match.label.split('|||');
-          setDuplicateFound({ name: dName, division: dDiv });
-          setSubmitting(false);
-          return;
-        }
-      }
-
-      // Extract Thumbnail
-      const thumbnail = await extractFaceThumbnail(img, detection.detection.box);
-
-      await submitFaceProfile([detection.descriptor], true, [thumbnail]);
-    } catch (err) {
-      console.error('[FaceAPI] Photo processing error:', err);
-      setError('Gagal memproses foto. Pastikan format gambar benar.');
-      setSubmitting(false);
-    }
-  };
-
-  const extractFaceThumbnail = (img: HTMLImageElement | HTMLVideoElement, box: faceapi.Box): Promise<string> => {
-    return new Promise((resolve) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const size = 64; 
-      canvas.width = size;
-      canvas.height = size;
-
-      if (ctx) {
-        const padX = box.width * 0.2;
-        const padY = box.height * 0.2;
-        
-        ctx.drawImage(
-          img,
-          box.x - padX, box.y - padY, box.width + (padX * 2), box.height + (padY * 2),
-          0, 0, size, size
-        );
-      }
-      resolve(canvas.toDataURL('image/jpeg', 0.7));
-    });
-  };
-
-  // Success Screen
   if (success) {
     return (
-      <div className="fixed inset-0 z-50 bg-gradient-to-br from-green-900 via-emerald-900 to-teal-900 flex flex-col items-center justify-center text-white overflow-hidden">
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-green-500/20 rounded-full blur-[100px] animate-pulse"></div>
-          <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-emerald-500/20 rounded-full blur-[80px] animate-pulse delay-1000"></div>
-        </div>
-
-        <div className="relative z-10 flex flex-col items-center animate-[fadeIn_0.5s_ease-out]">
-          <div className="mb-8 relative">
-            <div className="absolute inset-0 bg-green-500 blur-2xl opacity-30 animate-ping rounded-full duration-[3000ms]"></div>
-            <div className="bg-white/10 p-8 rounded-full backdrop-blur-xl border border-white/20 shadow-[0_0_50px_rgba(16,185,129,0.5)] relative animate-[bounce_2s_infinite]">
-              <Sparkles size={80} className="text-green-400 drop-shadow-lg" />
-            </div>
-          </div>
-
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4 bg-clip-text text-transparent bg-gradient-to-r from-green-200 via-white to-green-200 text-center">
-            WAJAH TERDAFTAR
-          </h1>
-
-          <div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl p-6 max-w-sm w-full mx-4 text-center">
-            <p className="text-emerald-200 text-sm font-medium uppercase tracking-widest mb-2">Profile</p>
-            <p className="text-2xl font-bold text-white mb-1">{name}</p>
-            <p className="text-emerald-300/70 text-sm">{division}</p>
-            <div className="h-1 w-16 bg-green-500/50 mx-auto rounded-full mt-4 mb-2"></div>
-            <p className="text-white/60 text-xs mt-2">{resultMessage}</p>
-          </div>
-
-          <div className="mt-8 flex flex-col sm:flex-row gap-3">
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+        <div className="bg-white/5 border border-white/10 p-8 rounded-3xl max-w-md w-full text-center backdrop-blur-xl">
+          <CheckCircle className="w-20 h-20 text-emerald-400 mx-auto mb-4 animate-bounce" />
+          <h1 className="text-3xl font-bold text-white mb-2">Registrasi Berhasil!</h1>
+          <p className="text-slate-400 mb-6">Profil {name} dengan No. Registrasi {noreg} telah tersimpan.</p>
+          
+          <div className="flex gap-4">
             <button
               onClick={() => {
                 setSuccess(false);
                 setName('');
                 setDivision('');
-                setCapturedDescriptors([]);
-                setCaptureProgress(0);
-                setCapturing(false);
+                setNoreg('');
               }}
-              className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-xl font-medium transition-all flex items-center gap-2"
+              className="flex-1 bg-white/10 hover:bg-white/20 text-white py-3 rounded-xl font-bold transition-all"
             >
-              <UserPlus size={18} />
               Daftar Lagi
             </button>
-            <Link
-              href="/"
-              className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl font-medium transition-all flex items-center gap-2 justify-center"
-            >
-              <ArrowLeft size={18} />
-              Kembali ke Beranda
+            <Link href="/" className="flex-1 bg-violet-600 hover:bg-violet-500 text-white py-3 rounded-xl font-bold transition-all">
+              Selesai
             </Link>
           </div>
         </div>
@@ -509,344 +120,106 @@ export default function RegisterFace() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
-      {/* Background Ambience */}
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-violet-600/10 rounded-full blur-[100px] animate-pulse"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[100px] animate-pulse delay-1000"></div>
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 font-sans relative">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-violet-600/10 rounded-full blur-[100px]"></div>
       </div>
 
       <div className="w-full max-w-md relative z-10">
-        <style>{`
-          @keyframes faceBoxPulse {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.4); }
-            50% { box-shadow: 0 0 0 8px rgba(168, 85, 247, 0); }
-          }
-          .face-box-pulse {
-            animation: faceBoxPulse 1.5s ease-in-out infinite;
-          }
-          @keyframes captureFlash {
-            0% { opacity: 0.8; }
-            100% { opacity: 0; }
-          }
-        `}</style>
-
-        <div className="bg-white/5 backdrop-blur-xl p-8 rounded-3xl shadow-2xl border border-white/10 overflow-hidden relative">
-
-          {showCamera ? (
-            <div className="flex flex-col items-center">
-              <div className="flex justify-between w-full mb-4 items-center">
-                <h2 className="text-white font-bold text-lg flex items-center gap-2">
-                  <Camera size={20} className="text-violet-400" />
-                  Registrasi Wajah
-                </h2>
-                <button onClick={stopCamera} className="text-slate-400 hover:text-red-400 transition" type="button">
-                  <XCircle size={24} />
-                </button>
-              </div>
-
-              {/* Name/Division Info */}
-              <div className="w-full mb-4 flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10">
-                <div className="w-8 h-8 rounded-full bg-violet-500/20 flex items-center justify-center text-violet-400 font-bold text-sm shrink-0">
-                  {name.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <p className="text-white text-sm font-semibold">{name}</p>
-                  <p className="text-slate-400 text-xs">{division}</p>
-                </div>
-              </div>
-
-              {/* AI Status Bar */}
-              <div className={`w-full mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all duration-300 ${
-                capturing
-                  ? 'bg-violet-500/10 border border-violet-500/30 text-violet-400'
-                  : duplicateFound
-                    ? 'bg-red-500/10 border border-red-500/30 text-red-400 animate-pulse'
-                    : faceDetected
-                      ? 'bg-green-500/10 border border-green-500/30 text-green-400'
-                      : 'bg-blue-500/10 border border-blue-500/30 text-blue-400'
-              }`}>
-                {capturing ? (
-                  <Loader2 size={14} className="shrink-0 animate-spin" />
-                ) : faceDetected ? (
-                  <ShieldCheck size={14} className="shrink-0" />
-                ) : (
-                  <ShieldOff size={14} className="shrink-0 animate-pulse" />
-                )}
-                <span className="flex-1">{detectionStatus}</span>
-                {faceDetected && !capturing && (
-                  <span className="text-green-300 text-[10px] bg-green-500/20 px-2 py-0.5 rounded-full">
-                    {faceConfidence}%
-                  </span>
-                )}
-              </div>
-
-              {/* Capture Progress */}
-              {capturing && (
-                <div className="w-full mb-4">
-                  <div className="flex justify-between text-xs text-slate-400 mb-1.5">
-                    <span>Mengambil sampel wajah</span>
-                    <span className="text-violet-400 font-bold">{captureProgress}/{CAPTURE_COUNT}</span>
-                  </div>
-                  <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-violet-500 to-purple-500 rounded-full transition-all duration-300 ease-out"
-                      style={{ width: `${(captureProgress / CAPTURE_COUNT) * 100}%` }}
-                    ></div>
-                  </div>
-                </div>
-              )}
-
-              {/* Camera Feed */}
-              <div className="relative w-full aspect-square rounded-2xl overflow-hidden bg-black mb-4 ring-2 ring-violet-500/50 shadow-[0_0_30px_rgba(139,92,246,0.2)]">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover -scale-x-100"
-                />
-
-                {/* Futuristic AI Vision Frame */}
-                {faceBox && !capturing && (
-                  <div
-                    className="absolute transition-all duration-150 ease-out z-20 pointer-events-none"
-                    style={{
-                      left: `${faceBox.x}px`,
-                      top: `${faceBox.y}px`,
-                      width: `${faceBox.width}px`,
-                      height: `${faceBox.height}px`,
-                    }}
-                  >
-                    {/* Corner Brackets */}
-                    <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-violet-500 rounded-tl shadow-[0_0_15px_rgba(139,92,246,0.5)]"></div>
-                    <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-violet-500 rounded-tr shadow-[0_0_15px_rgba(139,92,246,0.5)]"></div>
-                    <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-violet-500 rounded-bl shadow-[0_0_15px_rgba(139,92,246,0.5)]"></div>
-                    <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-violet-500 rounded-br shadow-[0_0_15px_rgba(139,92,246,0.5)]"></div>
-                    
-                    {/* Scanning Line */}
-                    <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-violet-400 to-transparent animate-[scan_2s_infinite] shadow-[0_0_10px_rgba(139,92,246,0.8)]"></div>
-                    
-                    {/* AI Meta Labels */}
-                    <div className="absolute -top-8 left-0 flex items-center gap-2 animate-pulse">
-                      <div className="bg-violet-600 text-white text-[9px] font-black px-2 py-0.5 rounded shadow-lg uppercase">Status: Target Acquired</div>
-                      <div className="bg-black/50 backdrop-blur-sm text-violet-400 text-[8px] font-bold px-1.5 py-0.5 border border-violet-500/30 rounded uppercase tracking-tighter">Acc: {faceConfidence}%</div>
-                    </div>
-                    
-                    <div className="absolute -bottom-8 right-0 text-violet-400 font-mono text-[8px] flex flex-col items-end opacity-70">
-                      <span>POS_X: {Math.round(faceBox.x)}</span>
-                      <span>POS_Y: {Math.round(faceBox.y)}</span>
-                    </div>
-
-                    <style jsx>{`
-                      @keyframes scan {
-                        0% { top: 0%; opacity: 0; }
-                        10% { opacity: 1; }
-                        90% { opacity: 1; }
-                        100% { top: 100%; opacity: 0; }
-                      }
-                    `}</style>
-                  </div>
-                )}
-
-                {/* Capture Flash Effect */}
-                {capturing && captureProgress > 0 && (
-                  <div
-                    key={captureProgress}
-                    className="absolute inset-0 bg-white/30 pointer-events-none z-30"
-                    style={{ animation: 'captureFlash 0.3s ease-out forwards' }}
-                  ></div>
-                )}
-
-                {/* Duplicate Found - Verification Success Style */}
-                {duplicateFound && !capturing && (
-                  <div className="absolute inset-0 z-40 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-fade-in-up">
-                    <div className="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mb-4 border border-blue-500/30">
-                      <ShieldCheck size={40} className="text-blue-400" />
-                    </div>
-                    <h3 className="text-xl font-bold text-white mb-2">Profil Ditemukan!</h3>
-                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6 w-full">
-                      <p className="text-slate-400 text-[10px] uppercase font-bold tracking-widest mb-1">Identitas Terverifikasi</p>
-                      <p className="text-white font-bold text-lg">{duplicateFound.name}</p>
-                      <p className="text-blue-400 text-sm font-medium">{duplicateFound.division}</p>
-                    </div>
-                    <p className="text-slate-400 text-xs mb-8 leading-relaxed">
-                      Wajah Anda sudah terdaftar di sistem. Anda tidak perlu mendaftar ulang dan bisa langsung melakukan absensi.
-                    </p>
-                    <div className="flex flex-col gap-3 w-full">
-                      <Link 
-                        href="/" 
-                        className="flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg active:scale-95"
-                      >
-                        <ExternalLink size={18} /> Lanjut ke Presensi
-                      </Link>
-                    </div>
-                  </div>
-                )}
-
-                {/* Guide overlay when no face */}
-                {!faceBox && !capturing && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-                    <div className="w-48 h-56 border-2 border-dashed border-white/60 rounded-[40%] shadow-[0_0_0_999px_rgba(0,0,0,0.5)]"></div>
-                    <div className="absolute bottom-4 text-white/80 text-xs font-bold uppercase tracking-widest bg-black/50 px-3 py-1 rounded">
-                      Posisikan Wajah Di Sini
-                    </div>
-                  </div>
-                )}
-
-                {/* Capture overlay */}
-                {capturing && (
-                  <div className="absolute inset-0 border-4 border-violet-500/50 rounded-2xl z-10">
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="bg-black/60 backdrop-blur-sm px-4 py-2 rounded-full text-violet-300 text-sm font-bold tracking-wider flex items-center gap-2">
-                        <Loader2 size={16} className="animate-spin" />
-                        {submitting ? 'MENYIMPAN...' : 'MENGAMBIL...'}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Error */}
-              {error && (
-                <div className="w-full mb-4 bg-red-500/10 text-red-200 p-3 rounded-xl text-sm flex items-start gap-2 border border-red-500/20">
-                  <AlertOctagon size={16} className="mt-0.5 shrink-0 text-red-400" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              {/* Action Button */}
-              <button
-                onClick={handleCapture}
-                disabled={!faceDetected || capturing || submitting || !!duplicateFound}
-                type="button"
-                className={`w-full font-bold py-4 rounded-xl shadow-lg transition-all transform active:scale-[0.98] flex justify-center items-center gap-2 ${
-                  faceDetected && !capturing && !duplicateFound
-                    ? 'bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-400 hover:to-purple-500 text-white shadow-violet-500/20 hover:scale-[1.02]'
-                    : 'bg-slate-700/50 text-slate-500 cursor-not-allowed border border-slate-600/30'
-                }`}
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    <span>Menyimpan Profil...</span>
-                  </>
-                ) : capturing ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    <span>Mengambil... ({captureProgress}/{CAPTURE_COUNT})</span>
-                  </>
-                ) : faceDetected ? (
-                  <>
-                    <Sparkles size={18} />
-                    <span>Ambil Sampel & Daftar</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldOff size={18} />
-                    <span>Menunggu Wajah...</span>
-                  </>
-                )}
-              </button>
+        <div className="bg-white/5 backdrop-blur-xl p-8 rounded-3xl shadow-2xl border border-white/10">
+          <div className="text-center mb-8">
+            <div className="inline-block p-3 rounded-full bg-violet-500/20 mb-4 ring-1 ring-violet-400/30">
+              <UserPlus className="text-violet-400 w-8 h-8" />
             </div>
-          ) : (
-            <>
-              <div className="text-center mb-8">
-                <div className="inline-block p-3 rounded-full bg-violet-500/20 mb-4 ring-1 ring-violet-400/30">
-                  <UserPlus className="text-violet-400 w-8 h-8" />
-                </div>
-                <h1 className="text-3xl font-bold text-white tracking-tight">Daftar Wajah</h1>
-                <p className="text-sm text-violet-200/60 mt-2 font-light tracking-wide">Daftarkan wajah Anda untuk verifikasi presensi.</p>
+            <h1 className="text-3xl font-bold text-white tracking-tight">Daftar Anggota</h1>
+            <p className="text-sm text-violet-200/60 mt-2 font-light tracking-wide">Daftarkan No Registrasi (Barcode) Anda.</p>
+          </div>
 
-                {/* AI Model Status */}
-                <div className={`inline-flex items-center gap-2 mt-3 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${
-                  modelsLoaded
-                    ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-                    : modelLoadError
-                      ? 'bg-red-500/10 text-red-400 border border-red-500/20'
-                      : 'bg-blue-500/10 text-blue-400 border border-blue-500/20 animate-pulse'
-                }`}>
-                  <div className={`w-1.5 h-1.5 rounded-full ${modelsLoaded ? 'bg-green-400' : modelLoadError ? 'bg-red-400' : 'bg-blue-400 animate-ping'}`}></div>
-                  {modelsLoaded ? 'AI Siap' : modelLoadError ? 'AI Error' : 'Memuat AI...'}
-                </div>
-              </div>
-
-              {error && (
-                <div className="bg-red-500/10 text-red-200 p-4 rounded-xl text-sm mb-6 flex items-start gap-3 border border-red-500/20">
-                  <AlertOctagon size={18} className="mt-0.5 shrink-0 text-red-400" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              <div className="space-y-6">
-                <div className="group">
-                  <label className="block text-xs font-semibold text-violet-300 uppercase tracking-wider mb-2 ml-1">Nama Lengkap</label>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    className="w-full bg-slate-800/50 border border-white/10 text-white p-4 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all placeholder:text-slate-600 group-hover:border-violet-500/30"
-                    placeholder="Contoh: John Doe"
-                  />
-                </div>
-
-                <div className="group">
-                  <label className="block text-xs font-semibold text-violet-300 uppercase tracking-wider mb-2 ml-1">Divisi</label>
-                  <div className="relative">
-                    <select
-                      value={division}
-                      onChange={(e) => setDivision(e.target.value)}
-                      required
-                      className="w-full bg-slate-800/50 border border-white/10 text-white p-4 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none appearance-none transition-all group-hover:border-violet-500/30"
-                    >
-                      <option value="" className="bg-slate-900 text-slate-400">Pilih Divisi...</option>
-                      {DIVISIONS.map(div => <option key={div} value={div} className="bg-slate-900">{div}</option>)}
-                    </select>
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={startCamera}
-                  disabled={!modelsLoaded || !name.trim() || !division || submitting}
-                  type="button"
-                  className="w-full bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-violet-500/20 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 mt-2"
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      <span>{detectionStatus}</span>
-                    </>
-                  ) : !modelsLoaded ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      <span>Memuat AI...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Camera size={18} />
-                      <span>Buka Kamera (Video)</span>
-                    </>
-                  )}
-                </button>
-
-              </div>
-
-              {/* Navigation */}
-              <div className="mt-6 text-center">
-                <Link href="/" className="text-sm text-slate-500 hover:text-slate-300 transition-colors">
-                  ← Kembali ke Beranda
-                </Link>
-              </div>
-            </>
+          {error && (
+            <div className="bg-red-500/10 text-red-200 p-4 rounded-xl text-sm mb-6 flex items-start gap-3 border border-red-500/20">
+              <AlertOctagon size={18} className="mt-0.5 shrink-0 text-red-400" />
+              <span>{error}</span>
+            </div>
           )}
-        </div>
 
-        <p className="text-center text-slate-500 text-xs mt-8">
-          &copy; 2026 CSSA BEM FILKOM. All rights reserved.
-        </p>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="group">
+              <label className="block text-xs font-semibold text-violet-300 uppercase mb-2">Nama Lengkap</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                className="w-full bg-slate-800/50 border border-white/10 text-white p-4 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all placeholder:text-slate-600"
+                placeholder="Contoh: John Doe"
+              />
+            </div>
+
+            <div className="group">
+              <label className="block text-xs font-semibold text-violet-300 uppercase mb-2">Divisi</label>
+              <select
+                value={division}
+                onChange={(e) => setDivision(e.target.value)}
+                required
+                className="w-full bg-slate-800/50 border border-white/10 text-white p-4 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none appearance-none transition-all"
+              >
+                <option value="" disabled>Pilih Divisi</option>
+                {DIVISIONS.map(div => (
+                  <option key={div} value={div} className="bg-slate-800">{div}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="group">
+              <label className="block text-xs font-semibold text-violet-300 uppercase mb-2">No Registrasi (Barcode)</label>
+              <div className="flex gap-2">
+                <input
+                  value={noreg}
+                  onChange={(e) => setNoreg(e.target.value)}
+                  required
+                  className="flex-1 bg-slate-800/50 border border-white/10 text-white p-4 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all placeholder:text-slate-600"
+                  placeholder="Scan atau ketik NOREG"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowScanner(!showScanner)}
+                  className="bg-violet-600 hover:bg-violet-500 text-white p-4 rounded-xl transition-all"
+                  title="Scan Barcode"
+                >
+                  <Camera size={24} />
+                </button>
+              </div>
+            </div>
+
+            {showScanner && (
+              <div className="mt-4 border border-violet-500/30 rounded-xl overflow-hidden bg-black p-2 relative">
+                <div className="flex justify-between items-center mb-2 px-2">
+                  <span className="text-violet-300 text-xs font-bold uppercase">Arahkan Kamera ke Barcode</span>
+                  <button type="button" onClick={stopScanner} className="text-red-400"><XCircle size={18} /></button>
+                </div>
+                <div id="reader" className="w-full"></div>
+                <style jsx global>{`
+                  #reader { width: 100%; border: none; }
+                  #reader video { border-radius: 0.5rem; object-fit: cover; }
+                  #reader__dashboard_section_csr { padding: 10px; }
+                `}</style>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className={`w-full font-bold py-4 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 mt-4 
+                ${submitting ? 'bg-slate-700 text-slate-400' : 'bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-400 hover:to-purple-500 text-white'}`}
+            >
+              {submitting ? <Loader2 size={18} className="animate-spin" /> : <UserPlus size={18} />}
+              {submitting ? 'Menyimpan...' : 'Daftarkan Anggota'}
+            </button>
+          </form>
+
+          <Link href="/" className="flex items-center justify-center gap-2 mt-6 text-slate-400 hover:text-white transition-colors text-sm">
+            <ArrowLeft size={16} /> Kembali ke Beranda
+          </Link>
+        </div>
       </div>
     </div>
   );
