@@ -9,11 +9,11 @@ import {
 import { 
   TrendingUp, TrendingDown, Users, Clock, CheckCircle, AlertCircle, 
   Download, Calendar, Filter, ArrowUpRight, ArrowDownRight, Eye, FileText,
-  BarChart3, PieChart as PieChartIcon, Activity, Award, Target
+  BarChart3, PieChart as PieChartIcon, Activity, Award, Target, Search, BookOpen
 } from 'lucide-react';
 import { format, subMonths, subWeeks, startOfMonth, endOfMonth } from 'date-fns';
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import autoTable, { RowInput } from 'jspdf-autotable';
 
 interface MeetingStats {
   id: string;
@@ -47,6 +47,18 @@ interface TimeSeriesData {
   absence: number;
 }
 
+interface MemberPerformance {
+  name: string;
+  division: string;
+  totalRecords: number;
+  hadir: number;
+  late: number;
+  izin: number;
+  sakit: number;
+  alfa: number;
+  attendanceRate: number;
+}
+
 const COLORS = {
   hadir: '#22c55e',
   late: '#eab308',
@@ -71,6 +83,8 @@ export default function AnalyticsDashboard() {
   const [meetingStats, setMeetingStats] = useState<MeetingStats[]>([]);
   const [divisionStats, setDivisionStats] = useState<DivisionStats[]>([]);
   const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesData[]>([]);
+  const [memberPerformance, setMemberPerformance] = useState<MemberPerformance[]>([]);
+  const [memberSearch, setMemberSearch] = useState('');
   const [overallStats, setOverallStats] = useState({
     totalMeetings: 0,
     totalAttendance: 0,
@@ -80,11 +94,23 @@ export default function AnalyticsDashboard() {
     overallAbsenceRate: 0,
     totalMembers: 0
   });
+  const [specialEventStats, setSpecialEventStats] = useState({
+    totalEvents: 0,
+    totalStudyBible: 0,
+    totalDoaSubuh: 0,
+    overallHadirRate: 0,
+  });
 
   const DIVISIONS = [
     "Officer", "Kerohanian", "Mulmed", "Senat Angkatan",
     "Olahraga", "Humas", "Keamanan", "Pendidikan", "Parlemanterian"
   ];
+
+  const normalizeDivision = (div: string) => {
+    if (!div) return 'Unknown';
+    const normalized = DIVISIONS.find(d => d.toLowerCase() === div.toLowerCase());
+    return normalized || div;
+  };
 
   useEffect(() => {
     fetchAnalyticsData();
@@ -97,13 +123,31 @@ export default function AnalyticsDashboard() {
         fetchMeetingStats(),
         fetchDivisionStats(),
         fetchTimeSeriesData(),
-        fetchOverallStats()
+        fetchOverallStats(),
+        fetchMemberPerformance(),
+        fetchSpecialEventStats(),
       ]);
     } catch (error) {
       console.error('Error fetching analytics:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchSpecialEventStats = async () => {
+    const [{ data: events }, { data: attendance }] = await Promise.all([
+      supabase.from('special_events').select('id, event_type').eq('is_archived', false),
+      supabase.from('special_event_attendance').select('status, special_events(event_type)'),
+    ]);
+
+    const totalEvents = events?.length || 0;
+    const totalStudyBible = events?.filter((e: any) => e.event_type === 'Study Bible').length || 0;
+    const totalDoaSubuh = events?.filter((e: any) => e.event_type === 'Doa Subuh').length || 0;
+    const totalSpecialAtt = attendance?.length || 0;
+    const totalHadir = attendance?.filter((a: any) => a.status === 'Hadir').length || 0;
+    const overallHadirRate = totalSpecialAtt > 0 ? Math.round((totalHadir / totalSpecialAtt) * 100) : 0;
+
+    setSpecialEventStats({ totalEvents, totalStudyBible, totalDoaSubuh, overallHadirRate });
   };
 
   const fetchMeetingStats = async () => {
@@ -185,17 +229,18 @@ export default function AnalyticsDashboard() {
     const memberSet = new Set<string>();
     
     data.forEach((record: any) => {
-      if (!divisionMap[record.division]) return;
+      const normDiv = normalizeDivision(record.division);
+      if (!divisionMap[normDiv]) return;
       
-      memberSet.add(`${record.division}-${record.name}`);
-      divisionMap[record.division].totalAttendance++;
+      memberSet.add(`${normDiv}-${record.name}`);
+      divisionMap[normDiv].totalAttendance++;
       
       if (record.status === 'Hadir') {
-        divisionMap[record.division].hadirRate++;
+        divisionMap[normDiv].hadirRate++;
       } else if (record.status === 'Late') {
-        divisionMap[record.division].lateRate++;
+        divisionMap[normDiv].lateRate++;
       } else {
-        divisionMap[record.division].absenceRate++;
+        divisionMap[normDiv].absenceRate++;
       }
     });
 
@@ -297,6 +342,129 @@ export default function AnalyticsDashboard() {
     });
   };
 
+  const fetchMemberPerformance = async () => {
+    let profilesQuery = supabase
+      .from('user_profiles')
+      .select('name, division')
+      .order('name');
+
+    if (selectedDivision !== 'all') {
+      profilesQuery = profilesQuery.eq('division', selectedDivision);
+    }
+
+    let attendanceQuery = supabase
+      .from('attendance')
+      .select('name, division, status, meeting:meetings!inner(date)');
+
+    if (timeRange !== 'all') {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - parseInt(timeRange));
+      attendanceQuery = attendanceQuery.gte('meetings.date', startDate.toISOString().split('T')[0]);
+    }
+
+    if (selectedDivision !== 'all') {
+      attendanceQuery = attendanceQuery.eq('division', selectedDivision);
+    }
+
+    const [{ data: profiles, error: profilesError }, { data: attendance, error: attendanceError }] = await Promise.all([
+      profilesQuery,
+      attendanceQuery
+    ]);
+
+    if (profilesError) throw profilesError;
+    if (attendanceError) throw attendanceError;
+
+    // Also fetch special event attendance (no time/division filter — always include)
+    const { data: specialAtt } = await supabase
+      .from('special_event_attendance')
+      .select('name, division, status, special_events(event_type, date)');
+
+    const members = new Map<string, MemberPerformance>();
+
+    (profiles || []).forEach((profile) => {
+      const normDiv = normalizeDivision(profile.division);
+      const key = `${normDiv}-${profile.name}`;
+      members.set(key, {
+        name: profile.name,
+        division: normDiv,
+        totalRecords: 0,
+        hadir: 0,
+        late: 0,
+        izin: 0,
+        sakit: 0,
+        alfa: 0,
+        attendanceRate: 0
+      });
+    });
+
+    (attendance || []).forEach((record) => {
+      const normDiv = normalizeDivision(record.division);
+      const key = `${normDiv}-${record.name}`;
+      let member = members.get(key);
+
+      if (!member) {
+        member = {
+          name: record.name,
+          division: normDiv,
+          totalRecords: 0,
+          hadir: 0,
+          late: 0,
+          izin: 0,
+          sakit: 0,
+          alfa: 0,
+          attendanceRate: 0
+        };
+        members.set(key, member);
+      }
+
+      member.totalRecords++;
+      if (record.status === 'Hadir') member.hadir++;
+      if (record.status === 'Late') member.late++;
+      if (record.status === 'Izin') member.izin++;
+      if (record.status === 'Sakit') member.sakit++;
+      if (record.status === 'Alfa') member.alfa++;
+    });
+
+    // Merge special event attendance into member records
+    (specialAtt || []).forEach((record: any) => {
+      const normDiv = normalizeDivision(record.division);
+      const key = `${normDiv}-${record.name}`;
+      let member = members.get(key);
+
+      if (!member) {
+        member = {
+          name: record.name,
+          division: normDiv,
+          totalRecords: 0,
+          hadir: 0,
+          late: 0,
+          izin: 0,
+          sakit: 0,
+          alfa: 0,
+          attendanceRate: 0
+        };
+        members.set(key, member);
+      }
+
+      member.totalRecords++;
+      if (record.status === 'Hadir') member.hadir++;
+      if (record.status === 'Izin') member.izin++;
+      if (record.status === 'Sakit') member.sakit++;
+      if (record.status === 'Alfa') member.alfa++;
+    });
+
+    const performance = Array.from(members.values())
+      .map((member) => ({
+        ...member,
+        attendanceRate: member.totalRecords > 0
+          ? Math.round(((member.hadir + member.late) / member.totalRecords) * 100)
+          : 0
+      }))
+      .sort((a, b) => b.attendanceRate - a.attendanceRate || a.name.localeCompare(b.name));
+
+    setMemberPerformance(performance);
+  };
+
   const exportToPDF = () => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -344,24 +512,37 @@ export default function AnalyticsDashboard() {
       m.totalAttendance.toString(),
       m.hadir.toString(),
       m.late.toString(),
+      m.izin.toString(),
       `${m.attendanceRate}%`
     ]);
 
     autoTable(doc, {
       startY: finalY + 5,
-      head: [['Meeting', 'Date', 'Total', 'Hadir', 'Late', 'Rate']],
+      head: [['Meeting', 'Date', 'Total', 'Hadir', 'Late', 'Izin', 'Rate']],
       body: meetingData,
       theme: 'striped',
       headStyles: { fillColor: [139, 92, 246] },
       margin: { left: 14, right: 14 }
     });
 
-    // Division Performance
+// Division Performance
     finalY = (doc as any).lastAutoTable.finalY + 15;
     doc.setFontSize(12);
     doc.text('Division Performance', 14, finalY);
 
-    const divisionData = divisionStats.map(d => [
+    // Sort divisions according to DIVISIONS array order
+    const divisionOrder = DIVISIONS.reduce((acc, div, index) => {
+      acc[div] = index;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const sortedDivisionStats = [...divisionStats].sort((a, b) => {
+      const orderA = divisionOrder[a.division] !== undefined ? divisionOrder[a.division] : 999;
+      const orderB = divisionOrder[b.division] !== undefined ? divisionOrder[b.division] : 999;
+      return orderA - orderB;
+    });
+
+    const divisionData = sortedDivisionStats.map(d => [
       d.division,
       d.totalMembers.toString(),
       d.totalAttendance.toString(),
@@ -377,6 +558,106 @@ export default function AnalyticsDashboard() {
       theme: 'striped',
       headStyles: { fillColor: [34, 197, 94] },
       margin: { left: 14, right: 14 }
+    });
+
+// Member-level totals make the exported report usable for individual follow-up.
+    finalY = (doc as any).lastAutoTable.finalY + 15;
+    doc.setFontSize(12);
+    doc.text('Member Performance', 14, finalY);
+
+    const membersByDivision = new Map<string, MemberPerformance[]>();
+    memberPerformance.forEach(member => {
+      if (!membersByDivision.has(member.division)) {
+        membersByDivision.set(member.division, []);
+      }
+      membersByDivision.get(member.division)!.push(member);
+    });
+
+    // Sort divisions according to DIVISIONS array order
+    const sortedDivisions = Array.from(membersByDivision.keys()).sort((a, b) => {
+      const orderA = divisionOrder[a] !== undefined ? divisionOrder[a] : 999;
+      const orderB = divisionOrder[b] !== undefined ? divisionOrder[b] : 999;
+      return orderA - orderB;
+    });
+
+    // Build member data grouped by division with division headers
+    const memberData: (string[] | { type: 'header'; content: string })[] = [];
+    
+    sortedDivisions.forEach((division, divIndex) => {
+      const members = membersByDivision.get(division)!;
+      // Sort members within division by name
+      members.sort((a, b) => a.name.localeCompare(b.name));
+      
+      // Add division header row
+      memberData.push({ type: 'header', content: division });
+      
+      members.forEach((member) => {
+        memberData.push([
+          member.name,
+          member.division,
+          member.totalRecords.toString(),
+          member.hadir.toString(),
+          member.late.toString(),
+          member.izin.toString(),
+          member.sakit.toString(),
+          member.alfa.toString(),
+          `${member.attendanceRate}%`
+        ]);
+      });
+    });
+
+    // Also include members from divisions not in DIVISIONS array
+    const otherDivisions = Array.from(membersByDivision.keys()).filter(d => !DIVISIONS.includes(d));
+    otherDivisions.forEach(division => {
+      const members = membersByDivision.get(division)!;
+      members.sort((a, b) => a.name.localeCompare(b.name));
+      
+      memberData.push({ type: 'header', content: division });
+      
+      members.forEach((member) => {
+        memberData.push([
+          member.name,
+          member.division,
+          member.totalRecords.toString(),
+          member.hadir.toString(),
+          member.late.toString(),
+          member.izin.toString(),
+          member.sakit.toString(),
+          member.alfa.toString(),
+          `${member.attendanceRate}%`
+        ]);
+      });
+    });
+
+    // Convert to format autoTable expects with custom styling for division headers
+    const tableBody = memberData.map((row): RowInput => {
+      if (typeof row === 'object' && 'type' in row && row.type === 'header') {
+        return [{
+          content: row.content,
+          colSpan: 9,
+          styles: {
+            fillColor: [59, 130, 246],
+            textColor: [255, 255, 255],
+            fontStyle: 'bold' as const,
+            fontSize: 8,
+            halign: 'left'
+          }
+        }];
+      }
+      return row;
+    });
+
+    autoTable(doc, {
+      startY: finalY + 5,
+      head: [['Member', 'Division', 'Total', 'Hadir', 'Late', 'Izin', 'Sakit', 'Alfa', 'Rate']],
+      body: tableBody,
+      theme: 'striped',
+      headStyles: { fillColor: [59, 130, 246] },
+      styles: { fontSize: 7 },
+      margin: { left: 8, right: 8 },
+      columnStyles: {
+        0: { fontStyle: 'normal' }
+      }
     });
 
     doc.save(`CSSA_Analytics_Report_${format(new Date(), 'yyyyMMdd')}.pdf`);
@@ -501,6 +782,10 @@ export default function AnalyticsDashboard() {
   };
 
   const insights = getInsights();
+  const filteredMemberPerformance = memberPerformance.filter((member) =>
+    member.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
+    member.division.toLowerCase().includes(memberSearch.toLowerCase())
+  );
 
   if (loading) {
     return (
@@ -632,6 +917,39 @@ export default function AnalyticsDashboard() {
             </p>
           </div>
         </div>
+
+        {/* Special Events Summary */}
+        {specialEventStats.totalEvents > 0 && (
+          <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-purple-100 rounded-xl">
+                <BookOpen className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800">Kegiatan Khusus</h3>
+                <p className="text-xs text-slate-500">Study Bible &amp; Doa Subuh</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-white rounded-xl p-4 border border-purple-100">
+                <p className="text-2xl font-black text-purple-700">{specialEventStats.totalEvents}</p>
+                <p className="text-xs text-slate-500 mt-1">Total Kegiatan</p>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-blue-100">
+                <p className="text-2xl font-black text-blue-700">{specialEventStats.totalStudyBible}</p>
+                <p className="text-xs text-slate-500 mt-1">Study Bible</p>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-amber-100">
+                <p className="text-2xl font-black text-amber-700">{specialEventStats.totalDoaSubuh}</p>
+                <p className="text-xs text-slate-500 mt-1">Doa Subuh</p>
+              </div>
+              <div className="bg-white rounded-xl p-4 border border-green-100">
+                <p className="text-2xl font-black text-green-700">{specialEventStats.overallHadirRate}%</p>
+                <p className="text-xs text-slate-500 mt-1">Rate Kehadiran</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Insights */}
         {insights.length > 0 && (
@@ -825,6 +1143,72 @@ export default function AnalyticsDashboard() {
         </div>
 
         {/* Detailed Tables */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-200 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Performa Anggota</h3>
+              <p className="text-sm text-slate-500 mt-1">Rekap presensi setiap anggota pada periode yang dipilih</p>
+            </div>
+            <div className="relative w-full sm:w-72">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="search"
+                value={memberSearch}
+                onChange={(event) => setMemberSearch(event.target.value)}
+                placeholder="Cari nama atau divisi"
+                className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm whitespace-nowrap">
+              <thead className="bg-slate-50 text-slate-500 text-xs font-semibold uppercase tracking-wider">
+                <tr>
+                  <th className="px-6 py-3 text-left">Anggota</th>
+                  <th className="px-6 py-3 text-left">Divisi</th>
+                  <th className="px-6 py-3 text-center">Total</th>
+                  <th className="px-6 py-3 text-center text-green-600">Hadir</th>
+                  <th className="px-6 py-3 text-center text-yellow-600">Late</th>
+                  <th className="px-6 py-3 text-center text-blue-600">Izin</th>
+                  <th className="px-6 py-3 text-center text-purple-600">Sakit</th>
+                  <th className="px-6 py-3 text-center text-red-600">Alfa</th>
+                  <th className="px-6 py-3 text-center">Kehadiran</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredMemberPerformance.map((member) => (
+                  <tr key={`${member.division}-${member.name}`} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 font-medium text-slate-900">{member.name}</td>
+                    <td className="px-6 py-4 text-slate-500">{member.division}</td>
+                    <td className="px-6 py-4 text-center text-slate-700">{member.totalRecords}</td>
+                    <td className="px-6 py-4 text-center text-green-600 font-medium">{member.hadir}</td>
+                    <td className="px-6 py-4 text-center text-yellow-600 font-medium">{member.late}</td>
+                    <td className="px-6 py-4 text-center text-blue-600 font-medium">{member.izin}</td>
+                    <td className="px-6 py-4 text-center text-purple-600 font-medium">{member.sakit}</td>
+                    <td className="px-6 py-4 text-center text-red-600 font-medium">{member.alfa}</td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                        member.attendanceRate >= 80
+                          ? 'bg-green-100 text-green-700'
+                          : member.attendanceRate >= 60
+                          ? 'bg-yellow-100 text-yellow-700'
+                          : 'bg-red-100 text-red-700'
+                      }`}>
+                        {member.attendanceRate}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {filteredMemberPerformance.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="px-6 py-10 text-center text-slate-500">Tidak ada anggota yang sesuai.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
             <h3 className="text-lg font-bold text-slate-900">Meeting Details</h3>

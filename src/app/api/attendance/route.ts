@@ -2,12 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { differenceInMinutes, parseISO, set, format } from 'date-fns';
 import { withRateLimit } from '@/lib/rate-limit';
-
-function verifyAdminToken(request: Request): boolean {
-  const adminToken = request.headers.get('x-admin-token');
-  const serverPassword = process.env.ADMIN_PASSWORD || '8182838485';
-  return adminToken === serverPassword;
-}
+import { verifyAdminToken } from '@/lib/admin-auth';
 
 export async function POST(request: Request) {
   const limited = await withRateLimit(request, '/api/attendance');
@@ -60,7 +55,7 @@ export async function POST(request: Request) {
     // 2. Fetch User by NOREG
     const { data: userProfile, error: profileError } = await supabase
       .from('user_profiles')
-      .select('name, division')
+      .select('name, division, attendance_status')
       .eq('noreg', noreg.trim())
       .single();
 
@@ -69,6 +64,13 @@ export async function POST(request: Request) {
     }
 
     const { name, division } = userProfile;
+
+    if (userProfile.attendance_status === 'Magang') {
+      return NextResponse.json(
+        { error: `${name} sedang berstatus Magang dan tidak perlu mengambil absensi.`, exempt: true, name, division },
+        { status: 409 }
+      );
+    }
 
     // 3. Check if user already attended
     const { data: existing, error: existingError } = await supabase
@@ -129,7 +131,7 @@ export async function PUT(request: Request) {
 
   try {
     const body = await request.json();
-    const { meetingId } = body;
+    const { meetingId, action } = body;
 
     if (!meetingId) {
       return NextResponse.json({ error: 'meetingId is required.' }, { status: 400 });
@@ -138,7 +140,7 @@ export async function PUT(request: Request) {
     // 1. Get all registered students
     const { data: allStudents, error: studentsError } = await supabase
       .from('user_profiles')
-      .select('name, division');
+      .select('name, division, attendance_status');
 
     if (studentsError) throw studentsError;
     if (!allStudents || allStudents.length === 0) {
@@ -157,34 +159,40 @@ export async function PUT(request: Request) {
       (existingAttendance || []).map((a: any) => a.name.toLowerCase().trim())
     );
 
-    // 3. Find absent students
-    const absentStudents = allStudents.filter(
-      (s: any) => !attendedNames.has(s.name.toLowerCase().trim())
+    // 3. Find missing students
+    const missingStudents = allStudents.filter(
+      (s: any) =>
+        s.attendance_status !== 'Magang' &&
+        !attendedNames.has(s.name.toLowerCase().trim())
     );
 
-    if (absentStudents.length === 0) {
-      return NextResponse.json({ message: 'Semua mahasiswa sudah terabsen.', marked: 0 });
+    if (missingStudents.length === 0) {
+      return NextResponse.json({ message: 'Tidak ada mahasiswa aktif yang perlu ditandai.', marked: 0 });
     }
 
-    // 4. Insert "Alfa" records for absent students
-    const alfaRecords = absentStudents.map((s: any) => ({
+    const isAutoHadir = action === 'auto-hadir';
+    const statusToMark = isAutoHadir ? 'Hadir' : 'Alfa';
+    const deviceId = isAutoHadir ? 'auto-hadir' : 'auto-alfa';
+
+    // 4. Insert records for missing students
+    const records = missingStudents.map((s: any) => ({
       meeting_id: meetingId,
       name: s.name,
       division: s.division,
-      status: 'Alfa',
-      device_id: 'auto-alfa',
+      status: statusToMark,
+      device_id: deviceId,
       is_suspicious: false,
       created_at: new Date().toISOString()
     }));
 
-    const { error: insertError } = await supabase.from('attendance').insert(alfaRecords);
+    const { error: insertError } = await supabase.from('attendance').insert(records);
     if (insertError) throw insertError;
 
     return NextResponse.json({
       success: true,
-      message: `${absentStudents.length} mahasiswa ditandai Alfa.`,
-      marked: absentStudents.length,
-      names: absentStudents.map((s: any) => s.name)
+      message: `${missingStudents.length} mahasiswa ditandai ${statusToMark}.`,
+      marked: missingStudents.length,
+      names: missingStudents.map((s: any) => s.name)
     });
   } catch (error: any) {
     console.error('[MarkAlfa] Error:', error);

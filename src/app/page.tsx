@@ -50,23 +50,7 @@ export default function Home() {
         </Link>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-6 mt-6 w-full max-w-4xl justify-center">
-        <Link
-          href="/absence-request"
-          className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-600/10 backdrop-blur-md border border-emerald-500/20 p-8 hover:bg-emerald-500/20 transition-all duration-300 transform hover:scale-105"
-        >
-          <div className="relative z-10">
-            <h2 className="mb-3 text-2xl font-bold flex items-center gap-2 text-emerald-400">
-              Absence Request
-              <span className="inline-block transition-transform group-hover:translate-x-1">→</span>
-            </h2>
-            <p className="m-0 text-sm text-emerald-100/80 max-w-[30ch] leading-relaxed">
-              Ajukan izin atau sakit untuk pertemuan yang tidak dapat dihadiri.
-            </p>
-          </div>
-          <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-500/20 rounded-full blur-2xl group-hover:bg-emerald-400/30 transition-all"></div>
-        </Link>
-      </div>
+
 
       <div className="mt-20 grid grid-cols-2 md:grid-cols-3 gap-8 text-center opacity-60 text-sm font-light">
         <div>

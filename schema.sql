@@ -49,9 +49,12 @@ CREATE POLICY "Enable update for all users" ON public.attendance FOR UPDATE USIN
 -- Create User Profiles (For Face AI)
 CREATE TABLE public.user_profiles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
     division TEXT NOT NULL,
-    noreg TEXT UNIQUE,
+    major TEXT,
+    tanggal_lahir DATE,
+    noreg TEXT,
+    attendance_status TEXT NOT NULL DEFAULT 'Aktif' CHECK (attendance_status IN ('Aktif', 'Magang')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

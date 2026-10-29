@@ -39,6 +39,12 @@ Ada 1 tabel yang belum ada: `security_logs`.
 3. Paste ke Supabase SQL Editor
 4. Klik **RUN**
 
+### 2. Aktifkan Status Magang
+
+Jalankan file `add_attendance_status.sql` di Supabase SQL Editor. Setelah itu, buka **Admin → Manajemen Mahasiswa** dan ubah kolom **Status Absensi** menjadi **Magang** untuk anggota yang sedang magang.
+
+Anggota Magang tidak akan diproses ketika menggunakan **Auto-Hadir Semua** atau **Mark Alfa**, dan bila mereka memindai QR akan muncul keterangan bahwa absensi tidak diperlukan.
+
 ---
 
 ## 🌐 Akses Aplikasi

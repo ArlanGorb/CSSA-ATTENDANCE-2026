@@ -10,6 +10,7 @@ export default function AttendBarcode({ params }: { params: { meetingId: string 
   
   const [status, setStatus] = useState<string | null>(null);
   const [attendanceResult, setAttendanceResult] = useState<{name: string, division: string, status: string} | null>(null);
+  const [exemptMember, setExemptMember] = useState<{name: string, division: string} | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   
@@ -89,6 +90,11 @@ export default function AttendBarcode({ params }: { params: { meetingId: string 
           status: data.status
         });
         setStatus(`Attendance recorded: ${data.status}`);
+      } else if (data.exempt) {
+        setExemptMember({
+          name: data.name || 'Anggota',
+          division: data.division || ''
+        });
       } else {
         setError(data.error || 'Terjadi kesalahan. Silakan coba lagi.');
         setTimeout(() => setShowScanner(true), 2000); // restart scanner after showing error
@@ -127,6 +133,30 @@ export default function AttendBarcode({ params }: { params: { meetingId: string 
         <button onClick={() => {
           setStatus(null);
           setAttendanceResult(null);
+          startScanner();
+        }} className="mt-12 bg-white/10 hover:bg-white/20 text-white px-6 py-2 rounded-full font-bold transition-all border border-white/20">
+          Scan Peserta Berikutnya
+        </button>
+      </div>
+    );
+  }
+
+  if (exemptMember) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-gradient-to-br from-amber-950 via-orange-950 to-slate-900 flex flex-col items-center justify-center text-white text-center p-6">
+        <div className="mb-8">
+          <CheckCircle size={100} className="text-amber-400 drop-shadow-[0_0_20px_rgba(251,191,36,0.5)]" />
+        </div>
+        <h1 className="text-4xl font-black mb-4 tracking-tight">TIDAK PERLU ABSEN</h1>
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 max-w-sm w-full shadow-2xl">
+          <p className="text-2xl font-bold text-amber-300">Status Magang</p>
+          <div className="h-px bg-white/20 w-full my-4"></div>
+          <p className="text-2xl font-bold text-white">{exemptMember.name}</p>
+          {exemptMember.division && <p className="text-white/50 text-xs mt-1">{exemptMember.division}</p>}
+          <p className="text-sm text-white/70 mt-5">Anggota magang dikecualikan dari pengambilan absensi.</p>
+        </div>
+        <button onClick={() => {
+          setExemptMember(null);
           startScanner();
         }} className="mt-12 bg-white/10 hover:bg-white/20 text-white px-6 py-2 rounded-full font-bold transition-all border border-white/20">
           Scan Peserta Berikutnya

@@ -1,12 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { withRateLimit } from '@/lib/rate-limit';
-
-function verifyAdminToken(request: Request): boolean {
-  const adminToken = request.headers.get('x-admin-token');
-  const serverPassword = process.env.ADMIN_PASSWORD || '8182838485';
-  return adminToken === serverPassword;
-}
+import { verifyAdminToken } from '@/lib/admin-auth';
 
 export async function GET(request: Request) {
   const limited = await withRateLimit(request, '/api/profiles');
@@ -19,7 +14,7 @@ export async function GET(request: Request) {
     if (noreg) {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('id, name, division, noreg')
+        .select('id, name, division, noreg, attendance_status')
         .eq('noreg', noreg.trim())
         .limit(1);
 
@@ -30,8 +25,7 @@ export async function GET(request: Request) {
 
     const { data: allData, error: allDocsError } = await supabase
       .from('user_profiles')
-      .select('id, name, division, noreg')
-      .not('noreg', 'is', null);
+      .select('id, name, division, major, tanggal_lahir, noreg, attendance_status');
 
     if (allDocsError) throw allDocsError;
     return NextResponse.json({ profiles: allData });
@@ -84,6 +78,34 @@ export async function POST(request: Request) {
   }
 }
 
+export async function PATCH(request: Request) {
+  if (!verifyAdminToken(request)) {
+    return NextResponse.json({ error: 'Unauthorized. Admin token required.' }, { status: 401 });
+  }
+
+  try {
+    const { id, attendanceStatus } = await request.json();
+
+    if (!id || !['Aktif', 'Magang'].includes(attendanceStatus)) {
+      return NextResponse.json(
+        { error: 'ID profil dan status Aktif atau Magang wajib diisi.' },
+        { status: 400 }
+      );
+    }
+
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({ attendance_status: attendanceStatus })
+      .eq('id', id);
+
+    if (error) throw error;
+
+    return NextResponse.json({ success: true, attendanceStatus });
+  } catch (error: any) {
+    return NextResponse.json({ error: 'Server error: ' + error.message }, { status: 500 });
+  }
+}
+
 export async function DELETE(request: Request) {
   if (!verifyAdminToken(request)) {
     return NextResponse.json({ error: 'Unauthorized. Admin token required.' }, { status: 401 });
@@ -92,6 +114,14 @@ export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const deleteAll = searchParams.get('all') === 'true';
+
+    if (deleteAll) {
+      // Supabase requires at least one filter for delete operations
+      const { error } = await supabase.from('user_profiles').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error) throw error;
+      return NextResponse.json({ success: true, message: 'All profiles deleted.' });
+    }
 
     if (!id) {
       return NextResponse.json({ error: 'Profile ID is required.' }, { status: 400 });

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { User, Calendar, CheckCircle, Clock, XCircle, HelpCircle, Trophy, ArrowLeft, TrendingUp, BarChart3, Edit2, Save, X } from 'lucide-react';
+import { User, Calendar, CheckCircle, Clock, XCircle, HelpCircle, Trophy, ArrowLeft, TrendingUp, BarChart3, Edit2, Save, X, BookOpen } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
@@ -20,17 +20,37 @@ interface AttendanceRecord {
   };
 }
 
+interface SpecialAttendanceRecord {
+  id: string;
+  name: string;
+  division: string;
+  status: string;
+  special_events: {
+    id: string;
+    title: string;
+    event_type: string;
+    date: string;
+  };
+}
+
 interface UserProfile {
   name: string;
   division: string;
   totalHadir: number;
   totalLate: number;
+  totalAlfa: number;
   totalIzin: number;
   totalSakit: number;
-  totalAlfa: number;
   totalPresence: number;
   attendanceRate: number;
   points: number;
+  // Special events
+  totalSpecialHadir: number;
+  totalSpecialAlfa: number;
+  totalSpecialIzin: number;
+  totalSpecialSakit: number;
+  specialAttendanceRate: number;
+  overallAttendanceRate: number;
 }
 
 const COLORS = {
@@ -50,6 +70,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
+  const [specialAttendanceHistory, setSpecialAttendanceHistory] = useState<SpecialAttendanceRecord[]>([]);
   const [searchName, setSearchName] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -71,50 +92,85 @@ export default function ProfilePage() {
   const fetchProfileData = async (name: string) => {
     setLoading(true);
     try {
-      // Fetch attendance records
-      const { data: attendances, error } = await supabase
-        .from('attendance')
-        .select(`
-          *,
-          meetings (
-            title,
-            date
-          )
-        `)
-        .ilike('name', name)
-        .order('timestamp', { ascending: false });
+      // Fetch meeting attendance dan special event attendance secara paralel
+      const [{ data: attendances, error }, specialRes] = await Promise.all([
+        supabase
+          .from('attendance')
+          .select(`*, meetings (title, date)`)
+          .ilike('name', name)
+          .order('timestamp', { ascending: false }),
+        fetch(`/api/special-events/attendance?name=${encodeURIComponent(name.trim())}`)
+      ]);
 
       if (error) throw error;
 
-      if (attendances && attendances.length > 0) {
+      const specialData = await specialRes.json();
+      const specialAttendances: SpecialAttendanceRecord[] = specialData.attendance || [];
+
+      if ((attendances && attendances.length > 0) || specialAttendances.length > 0) {
         localStorage.setItem('cssa_user_name', name);
-        
-        // Calculate stats
-        const stats = {
-          name: attendances[0].name,
-          division: attendances[0].division,
-          totalHadir: attendances.filter(a => a.status === 'Hadir').length,
-          totalLate: attendances.filter(a => a.status === 'Late').length,
-          totalIzin: attendances.filter(a => a.status === 'Izin').length,
-          totalSakit: attendances.filter(a => a.status === 'Sakit').length,
-          totalAlfa: attendances.filter(a => a.status === 'Alfa').length,
-          totalPresence: attendances.filter(a => ['Hadir', 'Late'].includes(a.status)).length,
-          attendanceRate: 0,
-          points: 0
-        };
 
-        const totalMeetings = attendances.length;
-        stats.attendanceRate = totalMeetings > 0 
-          ? Math.round((stats.totalHadir / totalMeetings) * 100) 
-          : 0;
-        
-        stats.points = (stats.totalHadir * 10) + (stats.totalLate * 5);
+        // Hitung stats meeting biasa
+        const totalMeetings = attendances?.length || 0;
+        const totalHadir = attendances?.filter(a => a.status === 'Hadir').length || 0;
+        const totalLate = attendances?.filter(a => a.status === 'Late').length || 0;
+        const totalAlfa = attendances?.filter(a => a.status === 'Alfa').length || 0;
+        const totalIzin = attendances?.filter(a => a.status === 'Izin').length || 0;
+        const totalSakit = attendances?.filter(a => a.status === 'Sakit').length || 0;
 
-        setProfile(stats);
-        setAttendanceHistory(attendances);
+        // Hitung stats kegiatan khusus
+        const totalSpecialHadir = specialAttendances.filter(a => a.status === 'Hadir').length;
+        const totalSpecialAlfa = specialAttendances.filter(a => a.status === 'Alfa').length;
+        const totalSpecialIzin = specialAttendances.filter(a => a.status === 'Izin').length;
+        const totalSpecialSakit = specialAttendances.filter(a => a.status === 'Sakit').length;
+        const totalSpecialEvents = specialAttendances.length;
+
+        // Rate kehadiran per kategori
+        const attendanceRate = totalMeetings > 0
+          ? Math.round((totalHadir / totalMeetings) * 100) : 0;
+        const specialAttendanceRate = totalSpecialEvents > 0
+          ? Math.round((totalSpecialHadir / totalSpecialEvents) * 100) : 0;
+
+        // Rate keaktifan gabungan (meeting + kegiatan khusus)
+        const totalAllRecords = totalMeetings + totalSpecialEvents;
+        const totalAllHadir = totalHadir + totalLate + totalSpecialHadir; // Late meeting tetap hitung hadir untuk overall
+        const overallAttendanceRate = totalAllRecords > 0
+          ? Math.round((totalAllHadir / totalAllRecords) * 100) : 0;
+
+        // Poin: meeting Hadir=10, Late=5; special Hadir=10
+        const points = (totalHadir * 10) + (totalLate * 5) + (totalSpecialHadir * 10);
+
+        const nameToUse = attendances && attendances.length > 0
+          ? attendances[0].name
+          : specialAttendances[0]?.name ?? name;
+        const divisionToUse = attendances && attendances.length > 0
+          ? attendances[0].division
+          : specialAttendances[0]?.division ?? '';
+
+        setProfile({
+          name: nameToUse,
+          division: divisionToUse,
+          totalHadir,
+          totalLate,
+          totalAlfa,
+          totalIzin,
+          totalSakit,
+          totalPresence: totalHadir + totalLate,
+          attendanceRate,
+          points,
+          totalSpecialHadir,
+          totalSpecialAlfa,
+          totalSpecialIzin,
+          totalSpecialSakit,
+          specialAttendanceRate,
+          overallAttendanceRate,
+        });
+        setAttendanceHistory(attendances || []);
+        setSpecialAttendanceHistory(specialAttendances);
       } else {
         setProfile(null);
         setAttendanceHistory([]);
+        setSpecialAttendanceHistory([]);
       }
     } catch (err) {
       console.error('Error fetching profile:', err);
@@ -135,6 +191,7 @@ export default function ProfilePage() {
     setSearchName('');
     setProfile(null);
     setAttendanceHistory([]);
+    setSpecialAttendanceHistory([]);
     setShowSearch(true);
     setIsEditing(false);
   };
@@ -162,13 +219,6 @@ export default function ProfilePage() {
 
       if (attendanceError) throw attendanceError;
 
-      // Update absence requests for consistency
-      const { error: absenceError } = await supabase
-        .from('absence_requests')
-        .update({ division: editDivision })
-        .eq('name', profile.name);
-
-      if (absenceError) throw absenceError;
 
       // Update local state
       setProfile({ ...profile, division: editDivision });
@@ -209,9 +259,9 @@ export default function ProfilePage() {
   const chartData = [
     { name: 'Hadir', value: profile?.totalHadir || 0 },
     { name: 'Late', value: profile?.totalLate || 0 },
+    { name: 'Alfa', value: profile?.totalAlfa || 0 },
     { name: 'Izin', value: profile?.totalIzin || 0 },
     { name: 'Sakit', value: profile?.totalSakit || 0 },
-    { name: 'Alfa', value: profile?.totalAlfa || 0 },
   ];
 
   return (
@@ -372,8 +422,9 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              {/* Stats Grid */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Stats Grid - Meeting Biasa */}
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Presensi Rapat</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
                 <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
                   <div className="flex items-center gap-3 mb-2">
                     <CheckCircle className="w-6 h-6 text-green-500" />
@@ -391,18 +442,80 @@ export default function ProfilePage() {
                 <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
                   <div className="flex items-center gap-3 mb-2">
                     <HelpCircle className="w-6 h-6 text-blue-500" />
-                    <span className="text-slate-400 text-sm">Izin/Sakit</span>
+                    <span className="text-slate-400 text-sm">Izin</span>
                   </div>
-                  <p className="text-3xl font-bold text-blue-400">{profile.totalIzin + profile.totalSakit}</p>
+                  <p className="text-3xl font-bold text-blue-400">{profile.totalIzin}</p>
+                </div>
+                <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
+                  <div className="flex items-center gap-3 mb-2">
+                    <HelpCircle className="w-6 h-6 text-purple-500" />
+                    <span className="text-slate-400 text-sm">Sakit</span>
+                  </div>
+                  <p className="text-3xl font-bold text-purple-400">{profile.totalSakit}</p>
+                </div>
+                <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
+                  <div className="flex items-center gap-3 mb-2">
+                    <XCircle className="w-6 h-6 text-red-500" />
+                    <span className="text-slate-400 text-sm">Alfa</span>
+                  </div>
+                  <p className="text-3xl font-bold text-red-400">{profile.totalAlfa}</p>
                 </div>
                 <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
                   <div className="flex items-center gap-3 mb-2">
                     <TrendingUp className="w-6 h-6 text-indigo-500" />
-                    <span className="text-slate-400 text-sm">Attendance Rate</span>
+                    <span className="text-slate-400 text-sm">Rate</span>
                   </div>
                   <p className="text-3xl font-bold text-indigo-400">{profile.attendanceRate}%</p>
                 </div>
               </div>
+
+              {/* Stats Grid - Kegiatan Khusus */}
+              {(specialAttendanceHistory.length > 0) && (
+                <>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 mt-6">Kegiatan Khusus (Study Bible &amp; Doa Subuh)</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-purple-500/10 rounded-2xl p-4 border border-purple-500/20">
+                      <div className="flex items-center gap-3 mb-2">
+                        <BookOpen className="w-6 h-6 text-purple-400" />
+                        <span className="text-slate-400 text-sm">Hadir</span>
+                      </div>
+                      <p className="text-3xl font-bold text-purple-300">{profile.totalSpecialHadir}</p>
+                    </div>
+                    <div className="bg-blue-500/10 rounded-2xl p-4 border border-blue-500/20">
+                      <div className="flex items-center gap-3 mb-2">
+                        <HelpCircle className="w-6 h-6 text-blue-400" />
+                        <span className="text-slate-400 text-sm">Izin</span>
+                      </div>
+                      <p className="text-3xl font-bold text-blue-300">{profile.totalSpecialIzin}</p>
+                    </div>
+                    <div className="bg-pink-500/10 rounded-2xl p-4 border border-pink-500/20">
+                      <div className="flex items-center gap-3 mb-2">
+                        <HelpCircle className="w-6 h-6 text-pink-400" />
+                        <span className="text-slate-400 text-sm">Sakit</span>
+                      </div>
+                      <p className="text-3xl font-bold text-pink-300">{profile.totalSpecialSakit}</p>
+                    </div>
+                    <div className="bg-red-500/10 rounded-2xl p-4 border border-red-500/20">
+                      <div className="flex items-center gap-3 mb-2">
+                        <XCircle className="w-6 h-6 text-red-400" />
+                        <span className="text-slate-400 text-sm">Alfa</span>
+                      </div>
+                      <p className="text-3xl font-bold text-red-300">{profile.totalSpecialAlfa}</p>
+                    </div>
+                  </div>
+                  {/* Overall rate card */}
+                  <div className="mt-4 bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/20 rounded-2xl p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <TrendingUp className="w-6 h-6 text-purple-300" />
+                      <div>
+                        <p className="text-sm font-semibold text-white">Keaktifan Keseluruhan</p>
+                        <p className="text-xs text-slate-400 mt-0.5">Rapat + Kegiatan Khusus gabungan</p>
+                      </div>
+                    </div>
+                    <p className="text-4xl font-black text-purple-300">{profile.overallAttendanceRate}%</p>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Chart & History */}
@@ -457,9 +570,10 @@ export default function ProfilePage() {
                       </div>
                       <span className={`text-sm font-medium px-2 py-1 rounded-full ${
                         record.status === 'Hadir' ? 'bg-green-500/20 text-green-400' :
-                        record.status === 'Late' ? 'bg-yellow-500/20 text-yellow-400' :
-                        record.status === 'Alfa' ? 'bg-red-500/20 text-red-400' :
-                        'bg-blue-500/20 text-blue-400'
+                         record.status === 'Late' ? 'bg-yellow-500/20 text-yellow-400' :
+                         record.status === 'Alfa' ? 'bg-red-500/20 text-red-400' :
+                         record.status === 'Sakit' ? 'bg-purple-500/20 text-purple-400' :
+                         'bg-blue-500/20 text-blue-400'
                       }`}>
                         {record.status}
                       </span>
@@ -473,7 +587,7 @@ export default function ProfilePage() {
             <div className="bg-white/5 backdrop-blur-xl rounded-3xl p-6 border border-white/10">
               <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
                 <Calendar className="w-6 h-6 text-blue-400" />
-                Full Attendance History
+                Riwayat Presensi Rapat
               </h2>
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -498,9 +612,10 @@ export default function ProfilePage() {
                         <td className="py-3 px-4 text-center">
                           <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${
                             record.status === 'Hadir' ? 'bg-green-500/20 text-green-400' :
-                            record.status === 'Late' ? 'bg-yellow-500/20 text-yellow-400' :
-                            record.status === 'Alfa' ? 'bg-red-500/20 text-red-400' :
-                            'bg-blue-500/20 text-blue-400'
+                             record.status === 'Late' ? 'bg-yellow-500/20 text-yellow-400' :
+                             record.status === 'Alfa' ? 'bg-red-500/20 text-red-400' :
+                             record.status === 'Sakit' ? 'bg-purple-500/20 text-purple-400' :
+                             'bg-blue-500/20 text-blue-400'
                           }`}>
                             {getStatusIcon(record.status)}
                             {record.status}
@@ -512,6 +627,60 @@ export default function ProfilePage() {
                 </table>
               </div>
             </div>
+
+            {/* Special Events History Table */}
+            {specialAttendanceHistory.length > 0 && (
+              <div className="bg-white/5 backdrop-blur-xl rounded-3xl p-6 border border-purple-500/20">
+                <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+                  <BookOpen className="w-6 h-6 text-purple-400" />
+                  Riwayat Kegiatan Khusus
+                </h2>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-white/10">
+                        <th className="text-left py-3 px-4 text-slate-400 font-medium">Tanggal</th>
+                        <th className="text-left py-3 px-4 text-slate-400 font-medium">Kegiatan</th>
+                        <th className="text-left py-3 px-4 text-slate-400 font-medium">Tipe</th>
+                        <th className="text-center py-3 px-4 text-slate-400 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {specialAttendanceHistory.map((record, index) => (
+                        <tr key={index} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                          <td className="py-3 px-4 text-sm">
+                            {format(new Date(record.special_events.date), 'dd MMM yyyy')}
+                          </td>
+                          <td className="py-3 px-4 font-medium text-sm">{record.special_events.title}</td>
+                          <td className="py-3 px-4">
+                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                              record.special_events.event_type === 'Study Bible'
+                                ? 'bg-blue-500/20 text-blue-300'
+                                : record.special_events.event_type === 'Doa Subuh'
+                                ? 'bg-amber-500/20 text-amber-300'
+                                : 'bg-slate-500/20 text-slate-300'
+                            }`}>
+                              {record.special_events.event_type}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${
+                              record.status === 'Hadir' ? 'bg-green-500/20 text-green-400' :
+                              record.status === 'Alfa' ? 'bg-red-500/20 text-red-400' :
+                              record.status === 'Sakit' ? 'bg-purple-500/20 text-purple-400' :
+                              'bg-blue-500/20 text-blue-400'
+                            }`}>
+                              {getStatusIcon(record.status)}
+                              {record.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

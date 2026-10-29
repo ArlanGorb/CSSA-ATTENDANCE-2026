@@ -2,16 +2,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 import { supabase } from '@/lib/supabase';
-import { QRCodeSVG } from 'qrcode.react';
-import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, Archive, RotateCcw, Terminal, ShieldAlert, Image as ImageIcon, Camera, Menu, UserCircle, Search, Upload, Loader2, Sparkles, BarChart2, FileText, BarChart3, ArrowUpRight, UserPlus, ShieldCheck, ShieldOff } from 'lucide-react';
+import { PlusCircle, QrCode, RefreshCcw, Users, Clock, CheckCircle, AlertTriangle, Download, Lock, Maximize2, X, Trash2, Archive, RotateCcw, Terminal, ShieldAlert, Image as ImageIcon, Camera, Menu, UserCircle, Search, Upload, Loader2, Sparkles, BarChart2, FileText, BarChart3, ArrowUpRight, UserPlus, ShieldCheck, ShieldOff, Edit2, Check, BookOpen, Save, ChevronDown, ChevronUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
-import * as faceapi from 'face-api.js';
+import * as XLSX from 'xlsx';
 
-type FaceProfile = {
+type StudentProfile = {
   id: string;
   name: string;
   division: string;
-  face_descriptor: number[] | number[][];
+  major?: string;
+  tanggal_lahir?: string;
+  noreg?: string;
+  attendance_status?: 'Aktif' | 'Magang';
 };
 
 
@@ -33,8 +35,9 @@ export default function AdminDashboard() {
   const [qrToken, setQrToken] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [createFormVisible, setCreateFormVisible] = useState(false);
-  const [showFullScreenQR, setShowFullScreenQR] = useState(false);
   const [showArchived, setShowArchived] = useState(false); // New state for archiving
+  const [editingMeetingId, setEditingMeetingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState<string>('');
   const [latestAttendee, setLatestAttendee] = useState<any>(null); // For Realtime Sci-fi Notification
   
   // Security specific states
@@ -44,51 +47,248 @@ export default function AdminDashboard() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // New Management view states
-  const [activeView, setActiveView] = useState<'meetings' | 'students' | 'analytics' | 'absence-requests'>('meetings');
-  const [allStudents, setAllStudents] = useState<FaceProfile[]>([]);
+  const [activeView, setActiveView] = useState<'meetings' | 'students' | 'analytics' | 'special-events'>('meetings');
+
+  // ─── Special Events State ───
+  type SpecialEvent = {
+    id: string;
+    title: string;
+    event_type: 'Study Bible' | 'Doa Subuh' | 'Lainnya';
+    date: string;
+    description?: string;
+    is_archived: boolean;
+  };
+  type SpecialAttendanceRecord = {
+    id?: string;
+    name: string;
+    division: string;
+    status: 'Hadir' | 'Alfa' | 'Izin' | 'Sakit';
+    notes?: string;
+  };
+
+  const [specialEvents, setSpecialEvents] = useState<SpecialEvent[]>([]);
+  const [selectedSpecialEvent, setSelectedSpecialEvent] = useState<SpecialEvent | null>(null);
+  const [specialAttendance, setSpecialAttendance] = useState<SpecialAttendanceRecord[]>([]);
+  const [specialEventLoading, setSpecialEventLoading] = useState(false);
+  const [savingSpecialAtt, setSavingSpecialAtt] = useState(false);
+  const [showCreateSpecialForm, setShowCreateSpecialForm] = useState(false);
+  const [showArchivedSpecial, setShowArchivedSpecial] = useState(false);
+  const [specialEventForm, setSpecialEventForm] = useState({
+    title: '',
+    event_type: 'Study Bible' as 'Study Bible' | 'Doa Subuh' | 'Lainnya',
+    date: '',
+    description: '',
+  });
+  const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || '8182838485';
+  const [allStudents, setAllStudents] = useState<StudentProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [allAttendances, setAllAttendances] = useState<any[]>([]);
 
-  // Absence Requests states
-  const [absenceRequests, setAbsenceRequests] = useState<any[]>([]);
-  const [selectedRequest, setSelectedRequest] = useState<any>(null);
-  const [adminNote, setAdminNote] = useState('');
   
   // Face Training states
-  const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [trainingStudent, setTrainingStudent] = useState<FaceProfile | null>(null);
-  const [isTrainingModalOpen, setIsTrainingModalOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [trainingStatus, setTrainingStatus] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [isSubmittingManual, setIsSubmittingManual] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    name: '',
+    major: '',
+    divisi: '',
+    tanggal_lahir: '',
+    attendance_status: 'Aktif' as 'Aktif' | 'Magang'
+  });
 
-  // Sample Management states
-  const [isSampleModalOpen, setIsSampleModalOpen] = useState(false);
-  const [selectedStudentSamples, setSelectedStudentSamples] = useState<any[]>([]);
-  const [isDeletingSample, setIsDeletingSample] = useState<number | null>(null);
-  const [managementStudent, setManagementStudent] = useState<FaceProfile | null>(null);
+  const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  // Add New Student states
-  const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
-  const [newStudentName, setNewStudentName] = useState('');
-  const [newStudentDivision, setNewStudentDivision] = useState('');
-  const [addCameraActive, setAddCameraActive] = useState(false);
-  const [addFaceDetected, setAddFaceDetected] = useState(false);
-  const [addFaceBox, setAddFaceBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const [addFaceConfidence, setAddFaceConfidence] = useState(0);
-  const [addDetectionStatus, setAddDetectionStatus] = useState('Siap');
-  const [addCapturing, setAddCapturing] = useState(false);
-  const [addCaptureProgress, setAddCaptureProgress] = useState(0);
-  const [addSubmitting, setAddSubmitting] = useState(false);
-  const [addSuccess, setAddSuccess] = useState(false);
-  const [addError, setAddError] = useState<string | null>(null);
+    setIsImporting(true);
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array', cellDates: true }); // Enable cellDates to parse dates properly
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(worksheet, { raw: false, dateNF: 'yyyy-mm-dd' }) as any[]; // Output as strings
 
-  // Refs for Add Student camera
-  const addVideoRef = useRef<HTMLVideoElement>(null);
-  const addStreamRef = useRef<MediaStream | null>(null);
-  const addDetectionLoop = useRef<NodeJS.Timeout | null>(null);
-  const addFaceConfirmCount = useRef(0);
+      // Expected columns: Nama, Major, Divisi, Tanggal Lahir
+      // Map it dynamically
+      const mappedData = json.map(row => {
+        const keys = Object.keys(row);
+        const findKey = (search: string) => keys.find(k => k.toLowerCase().includes(search));
+        
+        let dob = row[findKey('lahir') || findKey('dob') || 'Tanggal Lahir'];
+        // If it's still somehow a number (Excel serial), convert it manually
+        if (typeof dob === 'number') {
+           dob = new Date(Math.round((dob - 25569) * 86400 * 1000)).toISOString().split('T')[0];
+        }
+
+        return {
+          name: row[findKey('name') || findKey('nama') || 'Nama'],
+          major: row[findKey('major') || findKey('jurusan') || 'Major'],
+          divisi: row[findKey('divisi') || 'Divisi'],
+          tanggal_lahir: dob,
+          attendance_status: row[findKey('status') || 'Status']
+        };
+      }).filter(r => r.name);
+
+      if (mappedData.length === 0) {
+        alert('Format Excel tidak valid atau kosong. Pastikan ada kolom Nama, Major, Divisi, dan Tanggal Lahir.');
+        setIsImporting(false);
+        return;
+      }
+
+      const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || '8182838485';
+      const res = await fetch('/api/profiles/import', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-admin-token': adminPassword 
+        },
+        body: JSON.stringify({ students: mappedData })
+      });
+
+      const result = await res.json();
+      if (res.ok) {
+        alert(result.message);
+        fetchAllStudents();
+      } else {
+        alert('Gagal mengimpor: ' + result.error);
+      }
+    } catch (err: any) {
+      alert('Gagal membaca file Excel: ' + err.message);
+    } finally {
+      setIsImporting(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleManualFormChange = (
+    key: 'name' | 'major' | 'divisi' | 'tanggal_lahir' | 'attendance_status',
+    value: string
+  ) => {
+    setManualForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const resetManualForm = () => {
+    setManualForm({ name: '', major: '', divisi: '', tanggal_lahir: '', attendance_status: 'Aktif' });
+  };
+
+  const handleManualSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!manualForm.name.trim() || !manualForm.major.trim() || !manualForm.divisi || !manualForm.tanggal_lahir) {
+      alert('Lengkapi semua field: Nama, Major, Divisi, dan Tanggal Lahir.');
+      return;
+    }
+
+    setIsSubmittingManual(true);
+    try {
+      const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || '8182838485';
+      const res = await fetch('/api/profiles/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': adminPassword
+        },
+        body: JSON.stringify({
+          students: [
+            {
+              name: manualForm.name.trim(),
+              major: manualForm.major.trim(),
+              divisi: manualForm.divisi,
+              tanggal_lahir: manualForm.tanggal_lahir,
+              attendance_status: manualForm.attendance_status
+            }
+          ]
+        })
+      });
+
+      const result = await res.json();
+      if (res.ok) {
+        alert('Data mahasiswa berhasil ditambahkan.');
+        resetManualForm();
+        setShowManualForm(false);
+        fetchAllStudents();
+      } else {
+        alert('Gagal menambah data: ' + (result.error || 'Unknown error'));
+      }
+    } catch (err: any) {
+      alert('Kesalahan jaringan: ' + err.message);
+    } finally {
+      setIsSubmittingManual(false);
+    }
+  };
+
+  const handleDeleteStudent = async (id: string, name: string) => {
+    if (!confirm(`Hapus mahasiswa ${name}?`)) return;
+    const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || '8182838485';
+    try {
+      const res = await fetch(`/api/profiles?id=${id}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-token': adminPassword }
+      });
+      if (res.ok) fetchAllStudents();
+    } catch (err) {
+      alert('Kesalahan jaringan');
+    }
+  };
+
+  const handleAttendanceStatusChange = async (
+    student: StudentProfile,
+    attendanceStatus: 'Aktif' | 'Magang'
+  ) => {
+    const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || '8182838485';
+
+    try {
+      const res = await fetch('/api/profiles', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': adminPassword
+        },
+        body: JSON.stringify({ id: student.id, attendanceStatus })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Gagal memperbarui status absensi.');
+        return;
+      }
+
+      setAllStudents((students) => students.map((item) =>
+        item.id === student.id ? { ...item, attendance_status: attendanceStatus } : item
+      ));
+    } catch (err) {
+      alert('Kesalahan jaringan saat memperbarui status absensi.');
+    }
+  };
+
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
+  const handleDeleteAllStudents = async () => {
+    if (!confirm(`PENGHAPUSAN MASSAL: Apakah Anda yakin ingin menghapus SELURUH data mahasiswa? Tindakan ini tidak dapat dibatalkan.`)) return;
+    if (prompt('Ketik "HAPUS SEMUA" untuk mengkonfirmasi:') !== 'HAPUS SEMUA') {
+      alert('Konfirmasi dibatalkan.');
+      return;
+    }
+
+    setIsDeletingAll(true);
+    const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || '8182838485';
+    try {
+      const res = await fetch(`/api/profiles?all=true`, {
+        method: 'DELETE',
+        headers: { 'x-admin-token': adminPassword }
+      });
+      if (res.ok) {
+        alert('Seluruh data mahasiswa berhasil dihapus.');
+        fetchAllStudents();
+      } else {
+        const errorData = await res.json();
+        alert('Gagal menghapus: ' + errorData.error);
+      }
+    } catch (err) {
+      alert('Kesalahan jaringan saat menghapus semua data.');
+    } finally {
+      setIsDeletingAll(false);
+    }
+  };
 
 
   // Simple Auth Check
@@ -112,28 +312,17 @@ export default function AdminDashboard() {
     const auth = localStorage.getItem('cssa_admin_auth');
     if (auth === 'true') setIsAuthenticated(true);
     fetchMeetings();
-    loadModels();
     fetchAllStudents();
     fetchAllAttendances();
-    if (activeView === 'absence-requests') {
-      fetchAbsenceRequests();
-    }
   }, [showArchived, activeView]); // Re-fetch on toggle
 
-  const loadModels = async () => {
-    try {
-      if (modelsLoaded) return;
-      await Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-        faceapi.nets.ssdMobilenetv1.loadFromUri('/models'),
-        faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
-        faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
-      ]);
-      setModelsLoaded(true);
-    } catch (err) {
-      console.error("Error loading face models:", err);
+  useEffect(() => {
+    if (activeView === 'special-events') {
+      fetchSpecialEvents();
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, showArchivedSpecial]);
+
 
   const fetchAllStudents = async () => {
     try {
@@ -168,64 +357,158 @@ export default function AdminDashboard() {
     }
   };
 
-  const fetchAbsenceRequests = async () => {
+  // ─── Special Events Functions ───
+  const fetchSpecialEvents = async () => {
+    setSpecialEventLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('absence_requests')
-        .select(`
-          *,
-          meetings (
-            title,
-            date
-          )
-        `)
-        .order('created_at', { ascending: false });
-
-      if (data) setAbsenceRequests(data);
-      if (error) throw error;
+      const params = showArchivedSpecial ? '?archived=true' : '';
+      const res = await fetch(`/api/special-events${params}`);
+      const data = await res.json();
+      if (data.events) setSpecialEvents(data.events);
     } catch (err) {
-      console.error("Error fetching absence requests:", err);
+      console.error('Error fetching special events:', err);
+    } finally {
+      setSpecialEventLoading(false);
     }
   };
 
-  const handleReviewRequest = async (requestId: string, status: 'approved' | 'rejected') => {
+  const fetchSpecialAttendance = async (eventId: string) => {
     try {
-      const { error } = await supabase
-        .from('absence_requests')
-        .update({
-          status,
-          admin_note: adminNote,
-          reviewed_at: new Date().toISOString(),
-          reviewed_by: 'Admin'
-        })
-        .eq('id', requestId);
-
-      if (error) throw error;
-
-      // Update attendance record if approved
-      if (status === 'approved' && selectedRequest) {
-        await supabase
-          .from('attendance')
-          .upsert({
-            meeting_id: selectedRequest.meeting_id,
-            name: selectedRequest.name,
-            division: selectedRequest.division,
-            status: selectedRequest.absence_type,
-            device_id: 'admin-approved',
-            is_suspicious: false
-          }, {
-            onConflict: 'meeting_id,name'
-          });
+      const res = await fetch(`/api/special-events/attendance?eventId=${eventId}`);
+      const data = await res.json();
+      if (data.attendance) {
+        setSpecialAttendance(data.attendance);
       }
-
-      setAdminNote('');
-      setSelectedRequest(null);
-      fetchAbsenceRequests();
-      alert(`Request ${status} successfully!`);
-    } catch (err: any) {
-      alert('Error updating request: ' + err.message);
+    } catch (err) {
+      console.error('Error fetching special attendance:', err);
     }
   };
+
+  // Build full list merging all students with existing attendance for the event
+  const buildSpecialAttendanceSheet = async (eventId: string) => {
+    try {
+      const [profilesRes, attRes] = await Promise.all([
+        fetch('/api/profiles'),
+        fetch(`/api/special-events/attendance?eventId=${eventId}`)
+      ]);
+      const profilesData = await profilesRes.json();
+      const attData = await attRes.json();
+
+      const existing: Record<string, SpecialAttendanceRecord> = {};
+      (attData.attendance || []).forEach((r: any) => {
+        existing[r.name.toLowerCase()] = r;
+      });
+
+      const sheet: SpecialAttendanceRecord[] = (profilesData.profiles || [])
+        .filter((p: any) => p.attendance_status !== 'Magang')
+        .map((p: any) => existing[p.name.toLowerCase()] ?? {
+          name: p.name,
+          division: p.division,
+          status: 'Hadir' as const,
+          notes: '',
+        });
+
+      setSpecialAttendance(sheet);
+    } catch (err) {
+      console.error('Error building attendance sheet:', err);
+    }
+  };
+
+  const handleCreateSpecialEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!specialEventForm.title || !specialEventForm.event_type || !specialEventForm.date) {
+      alert('Judul, tipe kegiatan, dan tanggal wajib diisi.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/special-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-token': adminPassword },
+        body: JSON.stringify(specialEventForm),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setShowCreateSpecialForm(false);
+        setSpecialEventForm({ title: '', event_type: 'Study Bible', date: '', description: '' });
+        fetchSpecialEvents();
+        if (data.event) {
+          setSelectedSpecialEvent(data.event);
+          buildSpecialAttendanceSheet(data.event.id);
+        }
+      } else {
+        alert(data.error || 'Gagal membuat kegiatan.');
+      }
+    } catch (err) {
+      alert('Kesalahan jaringan.');
+    }
+  };
+
+  const handleSaveSpecialAttendance = async () => {
+    if (!selectedSpecialEvent) return;
+    setSavingSpecialAtt(true);
+    try {
+      const res = await fetch('/api/special-events/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-token': adminPassword },
+        body: JSON.stringify({
+          eventId: selectedSpecialEvent.id,
+          records: specialAttendance,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`${data.count} data kehadiran berhasil disimpan.`);
+      } else {
+        alert(data.error || 'Gagal menyimpan.');
+      }
+    } catch (err) {
+      alert('Kesalahan jaringan.');
+    } finally {
+      setSavingSpecialAtt(false);
+    }
+  };
+
+  const handleDeleteSpecialEvent = async (id: string, title: string) => {
+    if (!confirm(`Hapus kegiatan "${title}"? Semua data kehadiran akan ikut terhapus.`)) return;
+    try {
+      const res = await fetch(`/api/special-events?id=${id}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-token': adminPassword },
+      });
+      if (res.ok) {
+        fetchSpecialEvents();
+        if (selectedSpecialEvent?.id === id) {
+          setSelectedSpecialEvent(null);
+          setSpecialAttendance([]);
+        }
+      }
+    } catch (err) {
+      alert('Kesalahan jaringan.');
+    }
+  };
+
+  const handleArchiveSpecialEvent = async (id: string, archive: boolean) => {
+    try {
+      const res = await fetch('/api/special-events', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-admin-token': adminPassword },
+        body: JSON.stringify({ id, is_archived: archive }),
+      });
+      if (res.ok) {
+        fetchSpecialEvents();
+        if (selectedSpecialEvent?.id === id) setSelectedSpecialEvent(null);
+      }
+    } catch (err) {
+      alert('Kesalahan jaringan.');
+    }
+  };
+
+  const updateSpecialAttStatus = (name: string, status: 'Hadir' | 'Alfa' | 'Izin' | 'Sakit') => {
+    setSpecialAttendance(prev =>
+      prev.map(r => r.name === name ? { ...r, status } : r)
+    );
+  };
+
 
   const getTrendData = () => {
     const meetingMap: Record<string, number> = {};
@@ -389,6 +672,20 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleEditMeetingTitle = async (meetingId: string) => {
+    if (!editingTitle.trim()) return;
+    const { error } = await supabase.from('meetings').update({ title: editingTitle.trim() }).eq('id', meetingId);
+    if (error) {
+      alert('Error updating title: ' + error.message);
+    } else {
+      fetchMeetings();
+      if (selectedMeeting?.id === meetingId) {
+        setSelectedMeeting({ ...selectedMeeting, title: editingTitle.trim() });
+      }
+    }
+    setEditingMeetingId(null);
+  };
+
   const handleDelete = async (meetingId: string) => {
     if (confirm('Are you sure you want to permanently delete this meeting? This action cannot be undone.')) {
         const { error } = await supabase.from('meetings').delete().eq('id', meetingId);
@@ -409,11 +706,8 @@ export default function AdminDashboard() {
     const { error } = await supabase.from('meetings').insert([{
       title: form.meetingTitle.value,
       date: form.date.value,
-      start_time: form.startTime.value,
-      attendance_limit_minutes: parseInt(form.limit.value),
-      latitude: form.latitude?.value ? parseFloat(form.latitude.value) : null,
-      longitude: form.longitude?.value ? parseFloat(form.longitude.value) : null,
-      radius_meters: form.radius?.value ? parseInt(form.radius.value) : 100,
+      start_time: '00:00',
+      attendance_limit_minutes: 999,
       is_archived: false,
       qr_token: crypto.randomUUID(),
       qr_expiry: new Date(Date.now() + 60000 * 5).toISOString()
@@ -505,14 +799,47 @@ export default function AdminDashboard() {
     doc.setFont('helvetica', 'normal');
     doc.text(`Hadir: ${stats.hadir}`, 14, finalY + 22);
     doc.text(`Late: ${stats.late}`, 14, finalY + 29);
-    doc.text(`Sakit/Izin: ${stats.izin + stats.sakit}`, 14, finalY + 36);
-    doc.text(`Total Peserta: ${stats.total}`, 14, finalY + 43);
+    doc.text(`Izin: ${stats.izin}`, 14, finalY + 36);
+    doc.text(`Sakit: ${stats.sakit}`, 14, finalY + 43);
+    doc.text(`Alfa: ${stats.alfa}`, 14, finalY + 50);
+    doc.text(`Total Peserta: ${stats.total}`, 14, finalY + 57);
 
     doc.save(`Recap_${selectedMeeting.title}_${format(new Date(), 'yyyyMMdd')}.pdf`);
   };
 
-  // ─── MARK ALFA: Auto-mark absent students ───
+  // ─── MARK ALFA & AUTO HADIR ───
   const [markingAlfa, setMarkingAlfa] = useState(false);
+  const [autoHadirLoading, setAutoHadirLoading] = useState(false);
+
+  const handleAutoHadir = async () => {
+    if (!selectedMeeting) return;
+    if (!confirm(`PENTING: Tandai SEMUA mahasiswa yang belum absen di sesi "${selectedMeeting.title}" sebagai Hadir?`)) return;
+
+    setAutoHadirLoading(true);
+    try {
+      const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || '8182838485';
+      const res = await fetch('/api/attendance', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': adminPassword
+        },
+        body: JSON.stringify({ meetingId: selectedMeeting.id, action: 'auto-hadir' })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert(`${data.marked} mahasiswa berhasil ditandai Hadir.`);
+        fetchAttendance(selectedMeeting.id);
+      } else {
+        alert(data.error || 'Gagal menandai Hadir otomatis.');
+      }
+    } catch (err) {
+      alert('Kesalahan jaringan.');
+    } finally {
+      setAutoHadirLoading(false);
+    }
+  };
   const handleMarkAlfa = async () => {
     if (!selectedMeeting) return;
     if (!confirm(`Tandai semua mahasiswa yang tidak hadir di "${selectedMeeting.title}" sebagai Alfa?`)) return;
@@ -548,377 +875,7 @@ export default function AdminDashboard() {
     if (selectedMeeting) fetchAttendance(selectedMeeting.id);
   };
 
-  const handleTrainingUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0 || !modelsLoaded || !trainingStudent) return;
 
-    setSubmitting(true);
-    setTrainingStatus(`Memproses ${files.length} foto...`);
-    setError(null);
-
-    const descriptors: Float32Array[] = [];
-    const thumbnails: string[] = [];
-    let successCount = 0;
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (file.type === 'image/heic' || file.name.toLowerCase().endsWith('.heic')) {
-         setError(`Format HEIC (${file.name}) tidak didukung. Dilewati.`);
-         continue;
-      }
-
-      try {
-        const img = await faceapi.bufferToImage(file).catch(() => {
-           throw new Error(`Browser gagal membaca gambar ${file.name}.`);
-        });
-        const detection = await faceapi
-          .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.7 }))
-          .withFaceLandmarks()
-          .withFaceDescriptor();
-
-        if (detection) {
-          descriptors.push(detection.descriptor);
-          const thumb = await extractFaceThumbnail(img, detection.detection.box);
-          thumbnails.push(thumb);
-          successCount++;
-          setTrainingStatus(`Berhasil memproses ${successCount}/${files.length} foto...`);
-        }
-      } catch (err: any) {
-        console.error('[FaceAPI] Photo processing error for', file.name, err);
-      }
-    }
-
-    if (descriptors.length === 0) {
-      setError('Tidak ada wajah yang berhasil dideteksi dari foto yang diunggah.');
-      setSubmitting(false);
-      return;
-    }
-
-    setTrainingStatus('Menyimpan sampel pelatihan...');
-    await submitFaceProfile(descriptors, thumbnails);
-  };
-
-  const extractFaceThumbnail = (img: HTMLImageElement, box: faceapi.Box): Promise<string> => {
-    return new Promise((resolve) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const size = 64; // Low-res for storage efficiency
-      canvas.width = size;
-      canvas.height = size;
-
-      if (ctx) {
-        // Add 20% padding around face
-        const padX = box.width * 0.2;
-        const padY = box.height * 0.2;
-        
-        ctx.drawImage(
-          img,
-          box.x - padX, box.y - padY, box.width + (padX * 2), box.height + (padY * 2),
-          0, 0, size, size
-        );
-      }
-      resolve(canvas.toDataURL('image/jpeg', 0.7));
-    });
-  };
-
-  const submitFaceProfile = async (descriptors: Float32Array[], thumbnails?: string[]) => {
-    if (!trainingStudent) return;
-
-    setSubmitting(true);
-    setTrainingStatus('Menyimpan sampel pelatihan...');
-
-    try {
-      const payloadDescriptors = descriptors.map(d => Array.from(d));
-
-      const res = await fetch('/api/profiles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: trainingStudent.name,
-          division: trainingStudent.division,
-          faceDescriptor: payloadDescriptors,
-          thumbnails: thumbnails,
-          action: 'append'
-        }),
-      });
-
-      if (res.ok) {
-        setSuccess(true);
-        fetchAllStudents();
-        setTimeout(() => {
-          setIsTrainingModalOpen(false);
-          setTrainingStudent(null);
-          setSuccess(false);
-        }, 2000);
-      } else {
-        const data = await res.json();
-        setError(data.error || 'Gagal menyimpan profil wajah.');
-      }
-    } catch (err) {
-      setError('Kesalahan jaringan. Silakan coba lagi.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const fetchStudentSamples = async (student: FaceProfile) => {
-    setLoading(true);
-    setManagementStudent(student);
-    try {
-      const res = await fetch(`/api/profiles?name=${encodeURIComponent(student.name)}`);
-      const data = await res.json();
-      if (data.profile) {
-        let raw = data.profile.face_descriptor;
-        if (Array.isArray(raw)) {
-           if (typeof raw[0] === 'number') raw = [{ descriptor: raw, thumbnail: null }];
-           else if (Array.isArray(raw[0])) raw = raw.map(d => ({ descriptor: d, thumbnail: null }));
-        }
-        setSelectedStudentSamples(raw || []);
-        setIsSampleModalOpen(true);
-      }
-    } catch (err) {
-      console.error("Error fetching samples:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteSample = async (studentName: string, index: number) => {
-    if (!confirm('Anda yakin ingin menghapus sampel wajah ini?')) return;
-    
-    setIsDeletingSample(index);
-    try {
-      const res = await fetch('/api/profiles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: studentName,
-          sampleIndex: index,
-          action: 'delete_sample'
-        }),
-      });
-
-      if (res.ok) {
-        // Update local state
-        setSelectedStudentSamples(prev => prev.filter((_, i) => i !== index));
-        fetchAllStudents();
-      } else {
-        alert('Gagal menghapus sampel.');
-      }
-    } catch (err) {
-      console.error("Delete error:", err);
-    } finally {
-      setIsDeletingSample(null);
-    }
-  };
-
-  // ─── ADD NEW STUDENT: Camera & Capture Functions ───
-  const ADD_CAPTURE_COUNT = 10;
-
-  const stopAddStudentCamera = () => {
-    if (addDetectionLoop.current) { clearInterval(addDetectionLoop.current); addDetectionLoop.current = null; }
-    if (addStreamRef.current) { addStreamRef.current.getTracks().forEach(t => t.stop()); addStreamRef.current = null; }
-    if (addVideoRef.current?.srcObject) {
-      (addVideoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-      addVideoRef.current.srcObject = null;
-    }
-    setAddCameraActive(false); setAddFaceDetected(false); setAddFaceBox(null);
-  };
-
-  const startAddStudentDetection = useCallback(() => {
-    if (!modelsLoaded || !addVideoRef.current) return;
-    addFaceConfirmCount.current = 0;
-    setAddFaceDetected(false); setAddFaceBox(null); setAddDetectionStatus('Memindai wajah...');
-
-    addDetectionLoop.current = setInterval(async () => {
-      if (!addVideoRef.current || addVideoRef.current.paused) return;
-      try {
-        const det = await faceapi
-          .detectSingleFace(addVideoRef.current!, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
-          .withFaceLandmarks();
-
-        if (det) {
-          const vw = addVideoRef.current!.videoWidth, vh = addVideoRef.current!.videoHeight;
-          const area = (det.detection.box.width * det.detection.box.height) / (vw * vh);
-          if (area < 0.08) {
-            addFaceConfirmCount.current = Math.max(0, addFaceConfirmCount.current - 1);
-            setAddDetectionStatus('Dekatkan wajah ke kamera'); setAddFaceBox(null);
-          } else {
-            addFaceConfirmCount.current++;
-            setAddFaceConfidence(Math.round(det.detection.score * 100));
-            const dw = addVideoRef.current!.clientWidth, dh = addVideoRef.current!.clientHeight;
-            const sx = dw / vw, sy = dh / vh;
-            setAddFaceBox({
-              x: dw - (det.detection.box.x * sx) - (det.detection.box.width * sx),
-              y: det.detection.box.y * sy, width: det.detection.box.width * sx, height: det.detection.box.height * sy,
-            });
-            if (addFaceConfirmCount.current >= 5) {
-              setAddFaceDetected(true); setAddDetectionStatus('Wajah terkunci — siap ambil sampel');
-            } else {
-              setAddDetectionStatus(`Memverifikasi... (${addFaceConfirmCount.current}/5)`);
-            }
-          }
-        } else {
-          addFaceConfirmCount.current = Math.max(0, addFaceConfirmCount.current - 1);
-          setAddFaceBox(null);
-          if (addFaceConfirmCount.current === 0) { setAddFaceDetected(false); setAddDetectionStatus('Wajah tidak terdeteksi — lihat kamera'); }
-        }
-      } catch (err) { console.error('[AddStudent] Detection:', err); }
-    }, 300);
-  }, [modelsLoaded]);
-
-  const startAddStudentCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
-      });
-      addStreamRef.current = stream;
-      setAddCameraActive(true); setAddError(null); setAddFaceDetected(false); setAddFaceBox(null);
-      addFaceConfirmCount.current = 0;
-      setTimeout(() => {
-        if (addVideoRef.current) {
-          addVideoRef.current.srcObject = stream;
-          addVideoRef.current.onloadeddata = () => startAddStudentDetection();
-        }
-      }, 100);
-    } catch { setAddError('Akses kamera diperlukan untuk pendaftaran wajah.'); }
-  };
-
-  const handleAddStudentCapture = async () => {
-    if (!addVideoRef.current || !modelsLoaded || !addFaceDetected) return;
-    if (!newStudentName.trim() || !newStudentDivision) { setAddError('Nama dan divisi harus diisi.'); return; }
-
-    setAddCapturing(true); setAddCaptureProgress(0); setAddError(null);
-    if (addDetectionLoop.current) { clearInterval(addDetectionLoop.current); addDetectionLoop.current = null; }
-
-    const descriptors: Float32Array[] = [];
-    let thumbnail: string | null = null;
-
-    for (let i = 0; i < ADD_CAPTURE_COUNT; i++) {
-      if (!addVideoRef.current) break;
-      try {
-        const det = await faceapi
-          .detectSingleFace(addVideoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }))
-          .withFaceLandmarks().withFaceDescriptor();
-
-        if (det) {
-          if (i === 0) thumbnail = await extractFaceThumbnail(addVideoRef.current as any, det.detection.box);
-          descriptors.push(det.descriptor);
-          setAddCaptureProgress(i + 1);
-        } else { i--; await new Promise(r => setTimeout(r, 200)); continue; }
-      } catch (err) { console.error(`[AddStudent] Capture ${i + 1}:`, err); }
-
-      if (i < ADD_CAPTURE_COUNT - 1) {
-        setAddDetectionStatus(`Sampel ${i + 1}/${ADD_CAPTURE_COUNT} — tahan posisi...`);
-        await new Promise(r => setTimeout(r, 600));
-      }
-    }
-
-    if (descriptors.length >= 3) {
-      await submitNewStudentProfile(descriptors, thumbnail);
-    } else {
-      setAddError(`Hanya ${descriptors.length} sampel. Minimal 3. Coba lagi.`);
-      setAddCapturing(false); startAddStudentDetection();
-    }
-  };
-
-  const handleAddStudentPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0 || !modelsLoaded) return;
-    if (!newStudentName.trim() || !newStudentDivision) {
-      setAddError('Nama dan divisi harus diisi terlebih dahulu.');
-      return;
-    }
-
-    setAddSubmitting(true);
-    setAddDetectionStatus(`Memproses ${files.length} foto...`);
-    setAddError(null);
-
-    const descriptors: Float32Array[] = [];
-    const thumbnails: string[] = [];
-    let successCount = 0;
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (file.type === 'image/heic' || file.name.toLowerCase().endsWith('.heic')) {
-         setAddError(`Format HEIC (${file.name}) tidak didukung. Dilewati.`);
-         continue;
-      }
-
-      try {
-        const img = await faceapi.bufferToImage(file).catch(() => {
-           throw new Error(`Browser gagal membaca gambar ${file.name}.`);
-        });
-        const detection = await faceapi
-          .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.7 }))
-          .withFaceLandmarks()
-          .withFaceDescriptor();
-
-        if (detection) {
-          descriptors.push(detection.descriptor);
-          const thumb = await extractFaceThumbnail(img, detection.detection.box);
-          thumbnails.push(thumb);
-          successCount++;
-          setAddDetectionStatus(`Berhasil memproses ${successCount}/${files.length} foto...`);
-        }
-      } catch (err: any) {
-        console.error('[FaceAPI] Photo processing error for', file.name, err);
-      }
-    }
-
-    if (descriptors.length === 0) {
-      setAddError('Tidak ada wajah yang berhasil dideteksi dalam foto.');
-      setAddSubmitting(false);
-      return;
-    }
-
-    // Since these are distinct photos, we don't average them if there are multiple.
-    await submitNewStudentProfile(descriptors, null, false, thumbnails);
-  };
-
-  const submitNewStudentProfile = async (
-    descriptors: Float32Array[], 
-    thumbnail: string | null,
-    shouldAverage = true,
-    thumbnailsArray?: string[]
-  ) => {
-    setAddSubmitting(true); setAddDetectionStatus('Menyimpan profil wajah...');
-    try {
-      let payloadDescriptors;
-      let payloadThumbnails = thumbnailsArray;
-
-      if (shouldAverage) {
-        const avg = new Float32Array(128);
-        for (let i = 0; i < 128; i++) { let s = 0; for (const d of descriptors) s += d[i]; avg[i] = s / descriptors.length; }
-        payloadDescriptors = [Array.from(avg)];
-        if (thumbnail) payloadThumbnails = [thumbnail];
-      } else {
-        payloadDescriptors = descriptors.map(d => Array.from(d));
-      }
-
-      const res = await fetch('/api/profiles', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name: newStudentName.trim(), 
-          division: newStudentDivision, 
-          faceDescriptor: payloadDescriptors, 
-          thumbnails: payloadThumbnails 
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) { setAddSuccess(true); stopAddStudentCamera(); fetchAllStudents(); }
-      else { setAddError(data.error || 'Gagal menyimpan profil.'); setAddCapturing(false); startAddStudentDetection(); }
-    } catch { setAddError('Kesalahan jaringan.'); setAddCapturing(false); startAddStudentDetection(); }
-    finally { setAddSubmitting(false); }
-  };
-
-  const resetAddStudentModal = () => {
-    stopAddStudentCamera();
-    setIsAddStudentOpen(false); setNewStudentName(''); setNewStudentDivision('');
-    setAddCameraActive(false); setAddFaceDetected(false); setAddFaceBox(null);
-    setAddCapturing(false); setAddCaptureProgress(0); setAddSubmitting(false);
-    setAddSuccess(false); setAddError(null);
-  };
 
   const deleteAttendance = async (attendanceId: string, memberName: string) => {
     if (confirm(`Are you sure you want to delete ${memberName}?`)) {
@@ -935,9 +892,9 @@ export default function AdminDashboard() {
     switch (status) {
       case 'Hadir': return 'border-green-500/50 text-green-400 bg-green-950/30';
       case 'Late': return 'border-yellow-500/50 text-yellow-400 bg-yellow-950/30';
+      case 'Alfa': return 'border-red-500/50 text-red-500 bg-red-950/30';
       case 'Izin': return 'border-blue-500/50 text-blue-400 bg-blue-950/30';
       case 'Sakit': return 'border-purple-500/50 text-purple-400 bg-purple-950/30';
-      case 'Alfa': return 'border-red-500/50 text-red-500 bg-red-950/30';
       default: return 'border-slate-500/50 text-slate-400 bg-slate-900/30';
     }
   };
@@ -945,9 +902,9 @@ export default function AdminDashboard() {
   const stats = {
     hadir: attendances.filter(a => a.status === 'Hadir').length,
     late: attendances.filter(a => a.status === 'Late').length,
+    alfa: attendances.filter(a => a.status === 'Alfa').length,
     izin: attendances.filter(a => a.status === 'Izin').length,
     sakit: attendances.filter(a => a.status === 'Sakit').length,
-    alfa: attendances.filter(a => a.status === 'Alfa').length,
     total: attendances.length
   };
 
@@ -1029,17 +986,19 @@ export default function AdminDashboard() {
                   <Users size={18} className={activeView === 'students' ? 'text-blue-600' : 'text-slate-400'} />
                   <span className="font-medium text-sm">Data Mahasiswa</span>
                </button>
+
                <button
-                  onClick={() => setActiveView('absence-requests')}
+                  onClick={() => setActiveView('special-events')}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${
-                    activeView === 'absence-requests'
-                      ? 'bg-blue-50 border-blue-100 text-blue-900 shadow-sm'
+                    activeView === 'special-events'
+                      ? 'bg-purple-50 border-purple-100 text-purple-900 shadow-sm'
                       : 'bg-transparent border-transparent hover:bg-slate-50 text-slate-600'
                   }`}
                >
-                  <FileText size={18} className={activeView === 'absence-requests' ? 'text-blue-600' : 'text-slate-400'} />
-                  <span className="font-medium text-sm">Absence Requests</span>
+                  <BookOpen size={18} className={activeView === 'special-events' ? 'text-purple-600' : 'text-slate-400'} />
+                  <span className="font-medium text-sm">Kegiatan Khusus</span>
                </button>
+
                <a
                   href="/analytics"
                   target="_blank"
@@ -1110,10 +1069,31 @@ export default function AdminDashboard() {
                   }`}
                 >
                   <div className="flex justify-between items-start">
-                      <div>
-                          <h4 className={`font-medium text-sm ${selectedMeeting?.id === meeting.id ? 'text-blue-700' : 'text-slate-700'}`}>
-                             {meeting.title}
-                          </h4>
+                      <div className="w-full">
+                          {editingMeetingId === meeting.id ? (
+                              <div className="flex items-center gap-2 mb-1.5" onClick={(e) => e.stopPropagation()}>
+                                  <input 
+                                    autoFocus
+                                    value={editingTitle}
+                                    onChange={(e) => setEditingTitle(e.target.value)}
+                                    className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleEditMeetingTitle(meeting.id);
+                                        if (e.key === 'Escape') setEditingMeetingId(null);
+                                    }}
+                                  />
+                                  <button onClick={() => handleEditMeetingTitle(meeting.id)} className="text-blue-600 p-1 hover:bg-blue-100 rounded">
+                                      <Check size={14} />
+                                  </button>
+                                  <button onClick={() => setEditingMeetingId(null)} className="text-slate-400 p-1 hover:bg-slate-100 rounded">
+                                      <X size={14} />
+                                  </button>
+                              </div>
+                          ) : (
+                              <h4 className={`font-medium text-sm ${selectedMeeting?.id === meeting.id ? 'text-blue-700' : 'text-slate-700'}`}>
+                                 {meeting.title}
+                              </h4>
+                          )}
                           <div className="text-xs mt-1.5 flex items-center gap-3 opacity-70">
                              <span className="flex items-center gap-1"><Clock size={10}/> {meeting.date}</span>
                           </div>
@@ -1122,6 +1102,17 @@ export default function AdminDashboard() {
 
                   {/* Action Buttons */}
                   <div className={`mt-3 pt-3 border-t flex justify-end gap-2 ${selectedMeeting?.id === meeting.id ? 'border-blue-200/50' : 'border-slate-200 hidden group-hover:flex'}`}>
+                      <button
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          setEditingMeetingId(meeting.id);
+                          setEditingTitle(meeting.title);
+                        }}
+                        className="p-1.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                        title="Edit Session Title"
+                      >
+                        <Edit2 size={14} />
+                      </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); handleArchive(meeting.id, !meeting.is_archived); }}
                         className="p-1.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
@@ -1200,38 +1191,11 @@ export default function AdminDashboard() {
                   }} className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="col-span-1 md:col-span-2">
                        <label className="block text-sm font-medium text-slate-700 mb-2">Session Title</label>
-                       <input name="meetingTitle" placeholder="e.g Weekly Sync 01" required className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
+                       <input name="meetingTitle" placeholder="e.g Rapat Rabu Malam" required className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
                     </div>
-                    <div>
-                       <label className="block text-sm font-medium text-slate-700 mb-2">Date</label>
-                       <input name="date" type="date" required className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
-                    </div>
-                    <div>
-                       <label className="block text-sm font-medium text-slate-700 mb-2">Start Time</label>
-                       <input name="startTime" type="time" required className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
-                    </div>
-                    <div>
-                       <label className="block text-sm font-medium text-slate-700 mb-2">Tolerance (Minutes)</label>
-                       <input name="limit" type="number" defaultValue={15} required className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
-                    </div>
-
-                    {/* Geofencing Fields */}
                     <div className="col-span-1 md:col-span-2">
-                       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 mt-2">Geofencing (Opsional)</p>
-                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div>
-                             <label className="block text-sm font-medium text-slate-700 mb-2">Latitude</label>
-                             <input name="latitude" type="number" step="any" placeholder="e.g. 1.3284" className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
-                          </div>
-                          <div>
-                             <label className="block text-sm font-medium text-slate-700 mb-2">Longitude</label>
-                             <input name="longitude" type="number" step="any" placeholder="e.g. 124.9867" className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
-                          </div>
-                          <div>
-                             <label className="block text-sm font-medium text-slate-700 mb-2">Radius (meter)</label>
-                             <input name="radius" type="number" defaultValue={100} placeholder="100" className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
-                          </div>
-                       </div>
+                       <label className="block text-sm font-medium text-slate-700 mb-2">Tanggal</label>
+                       <input name="date" type="date" required className="w-full bg-white border border-slate-200 text-slate-900 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all shadow-sm" />
                     </div>
 
                     <div className="col-span-1 md:col-span-2 flex justify-end gap-3 mt-4 pt-4 border-t border-slate-100">
@@ -1377,21 +1341,34 @@ export default function AdminDashboard() {
                   <div className="px-6 py-5 border-b border-slate-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-slate-50/50">
                     <div>
                       <h2 className="text-xl font-bold text-slate-800">Manajemen Mahasiswa</h2>
-                      <p className="text-sm text-slate-500 mt-1">Kelola profil wajah dan pelatihan AI untuk mahasiswa.</p>
+                      <p className="text-sm text-slate-500 mt-1">Kelola data mahasiswa, tambah manual, dan import via Excel.</p>
                     </div>
                     <div className="flex items-center gap-3">
                       <button
-                        onClick={() => setIsAddStudentOpen(true)}
+                        onClick={() => setShowManualForm((prev) => !prev)}
                         className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-xl text-sm transition-all shadow-sm shrink-0"
                       >
                         <UserPlus size={16} />
-                        Tambah Mahasiswa
+                        {showManualForm ? 'Tutup Form' : 'Tambah Manual'}
                       </button>
+                      <button 
+                        onClick={handleDeleteAllStudents}
+                        disabled={isDeletingAll || allStudents.length === 0}
+                        className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium px-4 py-2 rounded-xl text-sm transition-all shadow-sm shrink-0"
+                      >
+                        {isDeletingAll ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                        Hapus Semua
+                      </button>
+                      <label className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-4 py-2 rounded-xl text-sm transition-all shadow-sm shrink-0 cursor-pointer">
+                        {isImporting ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                        {isImporting ? 'Mengimpor...' : 'Import Excel'}
+                        <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleExcelImport} disabled={isImporting} />
+                      </label>
                       <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                         <input 
                           type="text" 
-                          placeholder="Cari nama atau divisi..." 
+                          placeholder="Cari nama atau jurusan..." 
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-64 shadow-sm"
@@ -1399,28 +1376,125 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   </div>
+
+                  {showManualForm && (
+                    <form onSubmit={handleManualSubmit} className="px-6 py-5 border-b border-slate-200 bg-white">
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                        <input
+                          type="text"
+                          placeholder="Nama Lengkap"
+                          value={manualForm.name}
+                          onChange={(e) => handleManualFormChange('name', e.target.value)}
+                          className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          disabled={isSubmittingManual}
+                          required
+                        />
+                        <input
+                          type="text"
+                          placeholder="Major"
+                          value={manualForm.major}
+                          onChange={(e) => handleManualFormChange('major', e.target.value)}
+                          className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          disabled={isSubmittingManual}
+                          required
+                        />
+                        <select
+                          value={manualForm.divisi}
+                          onChange={(e) => handleManualFormChange('divisi', e.target.value)}
+                          className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          disabled={isSubmittingManual}
+                          required
+                        >
+                          <option value="">Pilih Divisi</option>
+                          {DIVISIONS.map((division) => (
+                            <option key={division} value={division}>{division}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="date"
+                          value={manualForm.tanggal_lahir}
+                          onChange={(e) => handleManualFormChange('tanggal_lahir', e.target.value)}
+                          className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          disabled={isSubmittingManual}
+                          required
+                        />
+                        <select
+                          value={manualForm.attendance_status}
+                          onChange={(e) => handleManualFormChange('attendance_status', e.target.value)}
+                          className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          disabled={isSubmittingManual}
+                        >
+                          <option value="Aktif">Aktif</option>
+                          <option value="Magang">Magang (tanpa absensi)</option>
+                        </select>
+                      </div>
+                      <div className="mt-4 flex items-center gap-3">
+                        <button
+                          type="submit"
+                          disabled={isSubmittingManual}
+                          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium px-4 py-2 rounded-xl text-sm transition-all shadow-sm"
+                        >
+                          {isSubmittingManual ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
+                          {isSubmittingManual ? 'Menyimpan...' : 'Simpan Data Manual'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            resetManualForm();
+                            setShowManualForm(false);
+                          }}
+                          disabled={isSubmittingManual}
+                          className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-medium px-4 py-2 rounded-xl text-sm transition-all shadow-sm"
+                        >
+                          Batal
+                        </button>
+                      </div>
+                    </form>
+                  )}
                   
                   <div className="p-0 overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-slate-50/50 text-slate-500 uppercase text-[10px] font-bold tracking-widest">
                         <tr>
-                          <th className="px-6 py-4 text-left">Nama Lengkap</th>
-                          <th className="px-6 py-4 text-left">Divisi</th>
-                          <th className="px-6 py-4 text-center">Sampel Wajah</th>
-                          <th className="px-6 py-4 text-right">Aksi</th>
+                          <th className="px-4 py-4 text-left">Nama Lengkap</th>
+                          <th className="px-4 py-4 text-left">Major</th>
+                          <th className="px-4 py-4 text-left">Divisi</th>
+                          <th className="px-4 py-4 text-left">Tgl Lahir</th>
+                          <th className="px-4 py-4 text-left">Status Absensi</th>
+                          <th className="px-3 py-4 text-center">
+                            <span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle size={10}/>Hadir</span>
+                          </th>
+                          <th className="px-3 py-4 text-center">
+                            <span className="inline-flex items-center gap-1 text-amber-600"><Clock size={10}/>Late</span>
+                          </th>
+                          <th className="px-3 py-4 text-center">
+                            <span className="inline-flex items-center gap-1 text-blue-600">Izin</span>
+                          </th>
+                          <th className="px-3 py-4 text-center">
+                            <span className="inline-flex items-center gap-1 text-purple-600">Sakit</span>
+                          </th>
+                          <th className="px-3 py-4 text-center">
+                            <span className="inline-flex items-center gap-1 text-red-600">Alfa</span>
+                          </th>
+                          <th className="px-3 py-4 text-center">Total</th>
+                          <th className="px-4 py-4 text-right">Aksi</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {allStudents
-                          .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.division.toLowerCase().includes(searchQuery.toLowerCase()))
+                          .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.division.toLowerCase().includes(searchQuery.toLowerCase()) || (s.major && s.major.toLowerCase().includes(searchQuery.toLowerCase())))
                           .map((student) => {
-                            const sampleCount = Array.isArray(student.face_descriptor[0]) 
-                              ? (student.face_descriptor as any).length 
-                              : 1;
-                            
+                            const studentAtt = allAttendances.filter((a: any) => a.name.toLowerCase().trim() === student.name.toLowerCase().trim());
+                            const hadir = studentAtt.filter((a: any) => a.status === 'Hadir').length;
+                            const late = studentAtt.filter((a: any) => a.status === 'Late').length;
+                            const izin = studentAtt.filter((a: any) => a.status === 'Izin').length;
+                            const sakit = studentAtt.filter((a: any) => a.status === 'Sakit').length;
+                            const alfa = studentAtt.filter((a: any) => a.status === 'Alfa').length;
+                            const total = studentAtt.length;
+
                             return (
                               <tr key={student.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="px-6 py-4">
+                                <td className="px-4 py-4">
                                   <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
                                       <UserCircle size={20} />
@@ -1428,44 +1502,346 @@ export default function AdminDashboard() {
                                     <span className="font-semibold text-slate-800">{student.name}</span>
                                   </div>
                                 </td>
-                                <td className="px-6 py-4 text-slate-500">{student.division}</td>
-                                <td className="px-6 py-4 text-center">
-                                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                                    sampleCount >= 10 ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
-                                    sampleCount >= 5 ? 'bg-blue-50 text-blue-600 border border-blue-100' :
-                                    'bg-slate-50 text-slate-600 border border-slate-100'
-                                  }`}>
-                                    {sampleCount} Sampel
+                                <td className="px-4 py-4 text-slate-500">{student.major || '-'}</td>
+                                <td className="px-4 py-4 text-slate-500">{student.division}</td>
+                                <td className="px-4 py-4 text-slate-500 font-mono text-xs">{student.tanggal_lahir ? format(new Date(student.tanggal_lahir), 'dd MMM yyyy') : '-'}</td>
+                                <td className="px-4 py-4">
+                                  <select
+                                    value={student.attendance_status || 'Aktif'}
+                                    onChange={(e) => handleAttendanceStatusChange(student, e.target.value as 'Aktif' | 'Magang')}
+                                    className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold outline-none transition-colors ${
+                                      student.attendance_status === 'Magang'
+                                        ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                        : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                    }`}
+                                    aria-label={`Status absensi ${student.name}`}
+                                  >
+                                    <option value="Aktif">Aktif</option>
+                                    <option value="Magang">Magang</option>
+                                  </select>
+                                  {student.attendance_status === 'Magang' && (
+                                    <p className="mt-1 text-[10px] text-amber-600">Tidak perlu absen</p>
+                                  )}
+                                </td>
+                                <td className="px-3 py-4 text-center">
+                                  <span className={`inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full text-xs font-bold ${hadir > 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-300'}`}>
+                                    {hadir}
                                   </span>
                                 </td>
-                                <td className="px-6 py-4 text-right">
-                                  <div className="flex justify-end gap-2">
-                                    <button
-                                      onClick={() => fetchStudentSamples(student)}
-                                      className="inline-flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-slate-700 font-bold px-3 py-1.5 rounded-lg text-xs transition-all shadow-sm"
-                                    >
-                                      <ImageIcon size={14} />
-                                      Kelola Sampel
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setTrainingStudent(student);
-                                        setIsTrainingModalOpen(true);
-                                        setError(null);
-                                        setSuccess(false);
-                                      }}
-                                      className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-all shadow-md shadow-blue-500/20"
-                                    >
-                                      <Camera size={14} />
-                                      Latih Wajah
-                                    </button>
-                                  </div>
+                                <td className="px-3 py-4 text-center">
+                                  <span className={`inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full text-xs font-bold ${late > 0 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'text-slate-300'}`}>
+                                    {late}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-4 text-center">
+                                  <span className={`inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full text-xs font-bold ${izin > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-slate-300'}`}>
+                                    {izin}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-4 text-center">
+                                  <span className={`inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full text-xs font-bold ${sakit > 0 ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'text-slate-300'}`}>
+                                    {sakit}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-4 text-center">
+                                  <span className={`inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full text-xs font-bold ${alfa > 0 ? 'bg-red-50 text-red-700 border border-red-200' : 'text-slate-300'}`}>
+                                    {alfa}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-4 text-center">
+                                  <span className="inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                    {total}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-4 text-right">
+                                  <button
+                                    onClick={() => handleDeleteStudent(student.id, student.name)}
+                                    className="text-slate-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50 transition-colors"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
                                 </td>
                               </tr>
                             );
                           })}
                       </tbody>
                     </table>
+                  </div>
+                </div>
+              </div>
+            ) : activeView === 'special-events' ? (
+              /* ─────────────────────────────────────────
+                 SPECIAL EVENTS VIEW (Study Bible / Doa Subuh)
+                 ───────────────────────────────────────── */
+              <div className="space-y-6 animate-fade-in-up">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+                      <div className="p-2 bg-purple-100 rounded-xl text-purple-600"><BookOpen size={22} /></div>
+                      Kegiatan Khusus
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-1">Kelola Study Bible &amp; Doa Subuh</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowArchivedSpecial(!showArchivedSpecial)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all border ${showArchivedSpecial ? 'bg-purple-50 border-purple-200 text-purple-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      {showArchivedSpecial ? <RotateCcw size={14} /> : <Archive size={14} />}
+                      {showArchivedSpecial ? 'Tampilkan Aktif' : 'Arsip'}
+                    </button>
+                    {!showArchivedSpecial && (
+                      <button
+                        onClick={() => setShowCreateSpecialForm(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-medium transition-all shadow-sm"
+                      >
+                        <PlusCircle size={16} />
+                        Buat Kegiatan
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Create Form */}
+                {showCreateSpecialForm && (
+                  <div className="bg-white border border-purple-100 rounded-2xl shadow-sm overflow-hidden">
+                    <div className="px-6 py-4 border-b border-slate-100 bg-purple-50/50 flex justify-between items-center">
+                      <h3 className="font-semibold text-slate-800">Buat Kegiatan Baru</h3>
+                      <button onClick={() => setShowCreateSpecialForm(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-md">
+                        <X size={16} />
+                      </button>
+                    </div>
+                    <form onSubmit={handleCreateSpecialEvent} className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Judul Kegiatan *</label>
+                        <input
+                          value={specialEventForm.title}
+                          onChange={e => setSpecialEventForm(f => ({ ...f, title: e.target.value }))}
+                          placeholder="Contoh: Study Bible Minggu ke-3"
+                          required
+                          className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Tipe Kegiatan *</label>
+                        <select
+                          value={specialEventForm.event_type}
+                          onChange={e => setSpecialEventForm(f => ({ ...f, event_type: e.target.value as any }))}
+                          required
+                          className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 outline-none appearance-none"
+                        >
+                          <option value="Study Bible">Study Bible</option>
+                          <option value="Doa Subuh">Doa Subuh</option>
+                          <option value="Lainnya">Lainnya</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Tanggal *</label>
+                        <input
+                          type="date"
+                          value={specialEventForm.date}
+                          onChange={e => setSpecialEventForm(f => ({ ...f, date: e.target.value }))}
+                          required
+                          className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Keterangan (opsional)</label>
+                        <input
+                          value={specialEventForm.description}
+                          onChange={e => setSpecialEventForm(f => ({ ...f, description: e.target.value }))}
+                          placeholder="Topik, lokasi, dll."
+                          className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+                        />
+                      </div>
+                      <div className="md:col-span-2 flex justify-end gap-3 pt-2 border-t border-slate-100 mt-2">
+                        <button type="button" onClick={() => setShowCreateSpecialForm(false)} className="px-5 py-2.5 text-slate-600 font-medium hover:bg-slate-50 border border-transparent hover:border-slate-200 rounded-xl transition-all text-sm">Batal</button>
+                        <button type="submit" className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-medium text-sm transition-all shadow-sm flex items-center gap-2">
+                          <PlusCircle size={15} /> Buat Kegiatan
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+
+                {/* Content: event list + attendance editor side by side */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Event List */}
+                  <div className="lg:col-span-1 space-y-2">
+                    <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-1 mb-3">
+                      {showArchivedSpecial ? 'Arsip' : 'Aktif'} ({specialEvents.length})
+                    </h3>
+                    {specialEventLoading ? (
+                      <div className="flex items-center justify-center py-10">
+                        <Loader2 className="animate-spin text-purple-400" size={24} />
+                      </div>
+                    ) : specialEvents.length === 0 ? (
+                      <div className="p-6 text-center text-sm text-slate-400 bg-white rounded-2xl border border-dashed border-slate-200">
+                        Belum ada kegiatan
+                      </div>
+                    ) : (
+                      specialEvents.map(ev => {
+                        const isSelected = selectedSpecialEvent?.id === ev.id;
+                        const typeColor: Record<string, string> = {
+                          'Study Bible': 'bg-blue-50 text-blue-700 border-blue-200',
+                          'Doa Subuh': 'bg-amber-50 text-amber-700 border-amber-200',
+                          'Lainnya': 'bg-slate-50 text-slate-600 border-slate-200',
+                        };
+                        return (
+                          <div
+                            key={ev.id}
+                            onClick={() => {
+                              setSelectedSpecialEvent(ev);
+                              buildSpecialAttendanceSheet(ev.id);
+                            }}
+                            className={`group p-4 rounded-xl cursor-pointer transition-all border ${isSelected ? 'bg-purple-50 border-purple-200 shadow-sm' : 'bg-white border-slate-200 hover:bg-slate-50'}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border mb-1.5 ${typeColor[ev.event_type]}`}>
+                                  {ev.event_type}
+                                </span>
+                                <p className="font-semibold text-sm text-slate-800 truncate">{ev.title}</p>
+                                <p className="text-xs text-slate-400 mt-0.5">{format(new Date(ev.date), 'dd MMM yyyy')}</p>
+                                {ev.description && <p className="text-xs text-slate-400 mt-0.5 truncate">{ev.description}</p>}
+                              </div>
+                              <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleArchiveSpecialEvent(ev.id, !ev.is_archived); }}
+                                  className="p-1.5 rounded text-slate-400 hover:text-purple-600 hover:bg-purple-50 transition-colors"
+                                  title={ev.is_archived ? 'Pulihkan' : 'Arsipkan'}
+                                >
+                                  {ev.is_archived ? <RotateCcw size={14} /> : <Archive size={14} />}
+                                </button>
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleDeleteSpecialEvent(ev.id, ev.title); }}
+                                  className="p-1.5 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                  title="Hapus"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Attendance Editor */}
+                  <div className="lg:col-span-2">
+                    {!selectedSpecialEvent ? (
+                      <div className="bg-white rounded-2xl border border-dashed border-slate-200 flex flex-col items-center justify-center py-20 text-center">
+                        <BookOpen size={40} className="text-slate-300 mb-3" />
+                        <p className="text-slate-400 font-medium">Pilih kegiatan di sebelah kiri</p>
+                        <p className="text-slate-300 text-sm mt-1">untuk mengelola kehadiran</p>
+                      </div>
+                    ) : (
+                      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        {/* Header */}
+                        <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+                          <div>
+                            <h3 className="font-bold text-slate-800">{selectedSpecialEvent.title}</h3>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {selectedSpecialEvent.event_type} · {format(new Date(selectedSpecialEvent.date), 'dd MMMM yyyy')}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="flex gap-3 text-xs font-medium">
+                              <span className="text-green-600">{specialAttendance.filter(r => r.status === 'Hadir').length} Hadir</span>
+                              <span className="text-blue-600">{specialAttendance.filter(r => r.status === 'Izin').length} Izin</span>
+                              <span className="text-purple-600">{specialAttendance.filter(r => r.status === 'Sakit').length} Sakit</span>
+                              <span className="text-red-500">{specialAttendance.filter(r => r.status === 'Alfa').length} Alfa</span>
+                            </div>
+                            <button
+                              onClick={handleSaveSpecialAttendance}
+                              disabled={savingSpecialAtt}
+                              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-xl text-sm font-medium transition-all shadow-sm"
+                            >
+                              {savingSpecialAtt ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                              Simpan
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Shortcut: mark all */}
+                        <div className="px-6 py-3 border-b border-slate-100 bg-white flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-slate-500 font-medium mr-1">Tandai Semua:</span>
+                          {(['Hadir', 'Alfa', 'Izin', 'Sakit'] as const).map(s => {
+                            const colors: Record<string, string> = {
+                              Hadir: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100',
+                              Alfa: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100',
+                              Izin: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100',
+                              Sakit: 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100',
+                            };
+                            return (
+                              <button
+                                key={s}
+                                onClick={() => setSpecialAttendance(prev => prev.map(r => ({ ...r, status: s })))}
+                                className={`text-xs font-semibold px-3 py-1 rounded-lg border transition-all ${colors[s]}`}
+                              >
+                                {s}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Table */}
+                        <div className="overflow-y-auto max-h-[520px]">
+                          <table className="w-full">
+                            <thead className="sticky top-0 bg-white z-10 border-b border-slate-100">
+                              <tr>
+                                <th className="text-left text-xs font-semibold text-slate-500 px-6 py-3">Nama</th>
+                                <th className="text-left text-xs font-semibold text-slate-500 px-4 py-3 hidden sm:table-cell">Divisi</th>
+                                <th className="text-center text-xs font-semibold text-slate-500 px-4 py-3">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {specialAttendance.length === 0 ? (
+                                <tr><td colSpan={3} className="text-center py-10 text-slate-400 text-sm">Memuat data...</td></tr>
+                              ) : (
+                                specialAttendance.map((record, idx) => {
+                                  const statusStyles: Record<string, string> = {
+                                    Hadir: 'bg-green-500',
+                                    Alfa: 'bg-red-500',
+                                    Izin: 'bg-blue-500',
+                                    Sakit: 'bg-purple-500',
+                                  };
+                                  return (
+                                    <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                                      <td className="px-6 py-3">
+                                        <span className="font-medium text-sm text-slate-800">{record.name}</span>
+                                      </td>
+                                      <td className="px-4 py-3 hidden sm:table-cell">
+                                        <span className="text-xs text-slate-500">{record.division}</span>
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                          {(['Hadir', 'Alfa', 'Izin', 'Sakit'] as const).map(s => (
+                                            <button
+                                              key={s}
+                                              onClick={() => updateSpecialAttStatus(record.name, s)}
+                                              className={`text-xs font-semibold px-3 py-1 rounded-lg transition-all border ${
+                                                record.status === s
+                                                  ? `${statusStyles[s]} text-white border-transparent shadow-sm`
+                                                  : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                                              }`}
+                                            >
+                                              {s}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1525,64 +1901,16 @@ export default function AdminDashboard() {
                   </div>
                 ) : (
                   <>
-                   {/* Full Screen QR Modal */}
-                   {showFullScreenQR && (
-                      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 animate-fade-in">
-                         <div className="bg-white p-8 md:p-12 rounded-3xl shadow-2xl flex flex-col items-center relative animate-zoom-in max-w-2xl w-full border border-slate-200">
-                            <button onClick={() => setShowFullScreenQR(false)} className="absolute top-4 right-4 md:top-6 md:right-6 p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full transition-colors">
-                              <X size={20} />
-                            </button>
-                            <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-8 text-center">{selectedMeeting.title}</h2>
-                            <div className="p-6 bg-white rounded-2xl shadow-sm border-2 border-slate-100">
-                               <QRCodeSVG value={attendanceUrl} size={Math.min(300, 300)} level="H" />
-                            </div>
-                            <div className="mt-8 flex items-center gap-2 px-5 py-2.5 bg-blue-50 border border-blue-100 text-blue-700 rounded-full text-sm font-medium">
-                                <RefreshCcw size={16} className="animate-spin-slow" /> Auto-refreshing Token
-                            </div>
-                         </div>
-                      </div>
-                   )}
-
                    <div className="flex flex-col xl:flex-row gap-6 items-stretch">
-                      {/* QR Card */}
-                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center flex-shrink-0 w-full xl:w-80">
-                          <div className="bg-slate-50/50 p-5 rounded-2xl mb-6 w-full flex justify-center border-2 border-dashed border-slate-200 cursor-pointer group relative overflow-hidden transition-colors hover:bg-slate-50 hover:border-slate-300" onClick={() => setShowFullScreenQR(true)}>
-                             <div className="bg-white p-3 rounded-xl shadow-sm transition-transform group-hover:scale-105 duration-300 border border-slate-100">
-                                <QRCodeSVG value={attendanceUrl} size={150} level="M" />
-                             </div>
-                             <div className="absolute inset-0 bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
-                                <span className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 shadow-lg scale-90 group-hover:scale-100 transition-transform">
-                                   <Maximize2 size={16} /> Expand
-                                </span>
-                             </div>
-                          </div>
-                          <div className="w-full">
-                             <div className="grid grid-cols-2 gap-3">
-                               <a
-                                  href={attendanceUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl transition-all font-medium text-sm shadow-sm"
-                                >
-                                  <QrCode size={16} className="text-slate-400" /> Open
-                                </a>
-                                <button
-                                  onClick={() => refreshQRToken(selectedMeeting.id)}
-                                  className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl transition-all font-medium text-sm shadow-sm"
-                                >
-                                  <RefreshCcw size={16} className="text-slate-400" /> Sync
-                                </button>
-                             </div>
-                          </div>
-                      </div>
-
                       {/* Stats Grid */}
-                      <div className="flex-1 w-full grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5">
+                      <div className="flex-1 w-full grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 md:gap-5">
                           {[
-                            { label: 'Present', val: stats.hadir, color: 'emerald', icon: CheckCircle },
-                            { label: 'Late', val: stats.late, color: 'amber', icon: Clock },
-                            { label: 'Excused', val: stats.izin + stats.sakit, color: 'blue', icon: ShieldAlert },
-                            { label: 'Total', val: stats.total, color: 'slate', icon: Terminal },
+                             { label: 'Present', val: stats.hadir, color: 'emerald', icon: CheckCircle },
+                             { label: 'Late', val: stats.late, color: 'amber', icon: Clock },
+                             { label: 'Izin', val: stats.izin, color: 'blue', icon: CheckCircle },
+                             { label: 'Sakit', val: stats.sakit, color: 'purple', icon: AlertTriangle },
+                             { label: 'Alfa', val: stats.alfa, color: 'red', icon: AlertTriangle },
+                             { label: 'Total', val: stats.total, color: 'slate', icon: Terminal },
                           ].map((stat, idx) => (
                              <div key={idx} className={`bg-white border border-slate-200 p-5 rounded-2xl flex flex-col shadow-sm relative overflow-hidden`}>
                                  <div className={`absolute right-0 top-0 p-4 opacity-[0.03] text-${stat.color}-600`}>
@@ -1607,8 +1935,6 @@ export default function AdminDashboard() {
                             </h2>
                             <div className="flex flex-wrap items-center gap-2 md:gap-3 text-xs md:text-sm text-slate-500 mt-1.5 font-medium">
                                <span className="flex items-center gap-1.5 bg-white border border-slate-200 px-2 py-1 rounded-md shadow-sm"><Clock size={14} className="text-slate-400" /> {format(new Date(selectedMeeting.created_at), 'dd MMM yyyy')}</span>
-                               <span className="px-2 py-1 bg-white border border-slate-200 rounded-md shadow-sm text-slate-600 font-bold">⏱ Tolerance: {selectedMeeting.attendance_limit_minutes}m</span>
-
                             </div>
                          </div>
                           <div className="flex gap-2 flex-wrap">
@@ -1617,6 +1943,14 @@ export default function AdminDashboard() {
                              </button>
                              <button onClick={handleExportPDF} className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all shadow-sm">
                                 <Download size={14} /> PDF
+                             </button>
+                             <button 
+                               onClick={handleAutoHadir} 
+                               disabled={autoHadirLoading || selectedMeeting?.is_archived}
+                               className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all shadow-sm"
+                             >
+                               {autoHadirLoading ? <RefreshCcw size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                               {autoHadirLoading ? 'Processing...' : 'Auto-Hadir Semua'}
                              </button>
                              <button 
                                onClick={handleMarkAlfa} 
@@ -1630,8 +1964,9 @@ export default function AdminDashboard() {
                       </div>
 
                       <div className="p-4 md:p-6 space-y-6">
-                         {DIVISIONS.map(division => {
-                            const divisionAttendees = attendances.filter(a => a.division === division);
+                         {/* Dynamically group by actual divisions found in data */}
+                         {Array.from(new Set(attendances.map(a => a.division || 'Tanpa Divisi'))).sort().map(division => {
+                            const divisionAttendees = attendances.filter(a => (a.division || 'Tanpa Divisi') === division);
                             if (divisionAttendees.length === 0) return null;
                             
                             return (
@@ -1651,7 +1986,6 @@ export default function AdminDashboard() {
                                               <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-widest">Nama Lengkap</th>
                                               <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-widest">Divisi</th>
                                               <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-widest">Status</th>
-                                              <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-widest">Bukti</th>
                                               <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-widest">Aksi</th>
                                             </tr>
                                          </thead>
@@ -1665,26 +1999,12 @@ export default function AdminDashboard() {
                                                   <td className="px-4 py-3 font-semibold text-slate-800">{record.name}</td>
                                                   <td className="px-4 py-3 text-slate-500 font-medium">{record.division}</td>
                                                   <td className={`px-4 py-3 text-sm font-bold ${
-                                                      record.status === 'Late' ? 'text-amber-600' : 'text-emerald-600'
-                                                  }`}>
-                                                      <span className="flex items-center gap-1.5">
-                                                         {record.status === 'Hadir' ? <CheckCircle size={14}/> : <Clock size={14}/>}
+                                                       record.status === 'Late' ? 'text-amber-600' : record.status === 'Alfa' ? 'text-red-600' : record.status === 'Izin' ? 'text-blue-600' : record.status === 'Sakit' ? 'text-purple-600' : 'text-emerald-600'
+                                                   }`}>
+                                                       <span className="flex items-center gap-1.5">
+                                                          {record.status === 'Hadir' || record.status === 'Izin' ? <CheckCircle size={14}/> : record.status === 'Sakit' ? <AlertTriangle size={14}/> : <Clock size={14}/>}
                                                          {record.status}
                                                       </span>
-                                                  </td>
-                                                  <td className="px-4 py-3">
-                                                     {record.photo_url ? (
-                                                         <button 
-                                                             onClick={() => setPreviewPhoto(record.photo_url)}
-                                                             className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors flex items-center gap-1.5"
-                                                             title="Lihat foto bukti"
-                                                         >
-                                                             <ImageIcon size={16} />
-                                                             <span className="text-[10px] font-bold uppercase">Lihat Foto</span>
-                                                         </button>
-                                                     ) : (
-                                                         <span className="text-slate-300 italic text-[10px]">Tanpa Foto</span>
-                                                     )}
                                                   </td>
                                                   <td className="px-4 py-3 text-right">
                                                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1755,507 +2075,8 @@ export default function AdminDashboard() {
             </div>
         )}
 
-        {/* Add Student Modal */}
-        {isAddStudentOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-            <div className="bg-white max-w-md w-full rounded-3xl overflow-hidden shadow-2xl animate-zoom-in">
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
-                    <UserPlus size={20} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-800">Tambah Mahasiswa</h3>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Input Data & Foto Wajah</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => !addSubmitting && resetAddStudentModal()}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200"
-                >
-                  <X size={20} />
-                </button>
-              </div>
 
-              <div className="p-8">
-                {addSuccess ? (
-                  <div className="text-center py-6 animate-fade-in">
-                    <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <CheckCircle size={32} />
-                    </div>
-                    <h4 className="text-lg font-bold text-slate-800">Berhasil!</h4>
-                    <p className="text-slate-500 text-sm mt-1">Mahasiswa {newStudentName} berhasil ditambahkan.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Nama Lengkap</label>
-                      <input
-                        type="text"
-                        value={newStudentName}
-                        onChange={(e) => setNewStudentName(e.target.value)}
-                        placeholder="Masukkan nama"
-                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-4 py-3 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                        disabled={addSubmitting}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Divisi</label>
-                      <select
-                        value={newStudentDivision}
-                        onChange={(e) => setNewStudentDivision(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-4 py-3 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                        disabled={addSubmitting}
-                      >
-                        <option value="">Pilih Divisi</option>
-                        {DIVISIONS.map((div) => (
-                          <option key={div} value={div}>{div}</option>
-                        ))}
-                      </select>
-                    </div>
 
-                    {addError && (
-                      <div className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-start gap-2 text-red-600 animate-shake">
-                        <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-                        <p className="text-xs font-semibold">{addError}</p>
-                      </div>
-                    )}
-
-                    <input
-                      type="file"
-                      id="add-student-photo-upload"
-                      accept="image/*"
-                      multiple
-                      onChange={handleAddStudentPhotoUpload}
-                      className="hidden"
-                      disabled={addSubmitting}
-                    />
-
-                    <label
-                      htmlFor="add-student-photo-upload"
-                      className={`w-full py-6 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-3 transition-all ${
-                        addSubmitting 
-                          ? 'bg-slate-50 border-slate-200 cursor-not-allowed' 
-                          : 'bg-white border-slate-200 hover:border-blue-400 hover:bg-blue-50/30 cursor-pointer'
-                      }`}
-                    >
-                      {addSubmitting ? (
-                        <>
-                          <Loader2 size={32} className="text-blue-500 animate-spin" />
-                          <span className="text-sm font-bold text-slate-600">{addDetectionStatus}</span>
-                        </>
-                      ) : (
-                        <>
-                          <Upload size={32} className="text-slate-300" />
-                          <div className="text-center">
-                            <span className="text-sm font-bold text-slate-700 block">Unggah Foto Wajah</span>
-                            <span className="text-[10px] text-slate-400">Bisa pilih lebih dari 1 foto (JPG/PNG)</span>
-                          </div>
-                        </>
-                      )}
-                    </label>
-                  </div>
-                )}
-              </div>
-
-              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-                <button
-                  onClick={resetAddStudentModal}
-                  disabled={addSubmitting}
-                  className="px-6 py-2 text-slate-600 font-bold text-sm hover:text-slate-800 disabled:opacity-50"
-                >
-                  Tutup
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Face Training Modal */}
-        {isTrainingModalOpen && trainingStudent && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-            <div className="bg-white max-w-md w-full rounded-3xl overflow-hidden shadow-2xl animate-zoom-in">
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
-                    <Sparkles size={20} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-800">Latih Wajah</h3>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Mahasiswa: {trainingStudent.name}</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => !submitting && setIsTrainingModalOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="p-8">
-                {success ? (
-                  <div className="text-center py-6 animate-fade-in">
-                    <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <CheckCircle size={32} />
-                    </div>
-                    <h4 className="text-lg font-bold text-slate-800">Berhasil!</h4>
-                    <p className="text-slate-500 text-sm mt-1">Sampel wajah berhasil ditambahkan ke profil {trainingStudent.name}.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
-                      <p className="text-xs text-blue-700 leading-relaxed font-medium">
-                        Unggah foto wajah {trainingStudent.name} untuk meningkatkan akurasi pengenalan AI. Gunakan foto yang jelas dan menghadap ke depan.
-                      </p>
-                    </div>
-
-                    {error && (
-                      <div className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-start gap-2 text-red-600 animate-shake">
-                        <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-                        <p className="text-xs font-semibold">{error}</p>
-                      </div>
-                    )}
-
-                    <input
-                      type="file"
-                      id="admin-photo-upload"
-                      accept="image/*"
-                      multiple
-                      onChange={handleTrainingUpload}
-                      className="hidden"
-                      disabled={submitting}
-                    />
-
-                    <label
-                      htmlFor="admin-photo-upload"
-                      className={`w-full py-10 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-3 transition-all cursor-pointer ${
-                        submitting 
-                          ? 'bg-slate-50 border-slate-200 cursor-not-allowed' 
-                          : 'bg-white border-slate-200 hover:border-blue-400 hover:bg-blue-50/30'
-                      }`}
-                    >
-                      {submitting ? (
-                        <>
-                          <Loader2 size={32} className="text-blue-500 animate-spin" />
-                          <span className="text-sm font-bold text-slate-600">{trainingStatus}</span>
-                        </>
-                      ) : (
-                        <>
-                          <Upload size={32} className="text-slate-300" />
-                          <div className="text-center">
-                            <span className="text-sm font-bold text-slate-700 block">Pilih Foto</span>
-                            <span className="text-[10px] text-slate-400">Bisa pilih lebih dari 1 foto (JPG/PNG)</span>
-                          </div>
-                        </>
-                      )}
-                    </label>
-                  </div>
-                )}
-              </div>
-
-              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-                <button
-                  onClick={() => setIsTrainingModalOpen(false)}
-                  disabled={submitting}
-                  className="px-6 py-2 text-slate-600 font-bold text-sm hover:text-slate-800 disabled:opacity-50"
-                >
-                  Tutup
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Sample Manager Modal */}
-        {isSampleModalOpen && selectedStudentSamples && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-            <div className="bg-white max-w-2xl w-full rounded-3xl overflow-hidden shadow-2xl animate-zoom-in flex flex-col max-h-[90vh]">
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">
-                    <ImageIcon size={20} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-800">Pengelola Sampel Wajah</h3>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Total: {selectedStudentSamples.length} Sampel</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => setIsSampleModalOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="p-6 overflow-y-auto">
-                {selectedStudentSamples.length === 0 ? (
-                  <div className="text-center py-20 text-slate-400">
-                    <AlertTriangle size={48} className="mx-auto mb-4 opacity-20" />
-                    <p>Tidak ada sampel wajah ditemukan.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                    {selectedStudentSamples.map((sample, idx) => (
-                      <div key={idx} className="group relative bg-slate-50 rounded-2xl p-2 border border-slate-100 hover:border-blue-200 transition-all hover:shadow-md">
-                        <div className="aspect-square rounded-xl overflow-hidden bg-slate-200 border border-slate-200">
-                          {sample.thumbnail ? (
-                            <img src={sample.thumbnail} alt={`Sample ${idx}`} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-100 italic text-[8px] text-center p-2">
-                              <UserCircle size={20} className="mb-1 opacity-50" />
-                              Legacy Data
-                            </div>
-                          )}
-                        </div>
-                        
-                        <div className="mt-2 flex items-center justify-between px-1">
-                          <span className="text-[10px] font-bold text-slate-400">#{idx + 1}</span>
-                          <button 
-                            disabled={isDeletingSample === idx}
-                            onClick={() => managementStudent && handleDeleteSample(managementStudent.name, idx)}
-                            className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                          >
-                            {isDeletingSample === idx ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                          </button>
-                        </div>
-
-                        {/* Hover Overlay */}
-                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                           <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-                <button
-                  onClick={() => setIsSampleModalOpen(false)}
-                  className="px-6 py-2 bg-white border border-slate-200 text-slate-600 font-bold text-sm rounded-xl hover:bg-slate-50 transition-all"
-                >
-                  Selesai
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Absence Requests View */}
-        {activeView === 'absence-requests' && (
-          <div className="space-y-6 animate-fade-in-up">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="px-6 py-5 border-b border-slate-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-slate-50/50">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-800">Absence Requests</h2>
-                  <p className="text-sm text-slate-500 mt-1">Review and approve student absence requests (Izin/Sakit)</p>
-                </div>
-                <button
-                  onClick={fetchAbsenceRequests}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-all flex items-center gap-2"
-                >
-                  <RefreshCcw size={16} />
-                  Refresh
-                </button>
-              </div>
-
-              <div className="p-0 overflow-x-auto">
-                {absenceRequests.length === 0 ? (
-                  <div className="text-center py-20 text-slate-400">
-                    <FileText size={48} className="mx-auto mb-4 opacity-20" />
-                    <p>No absence requests yet.</p>
-                  </div>
-                ) : (
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50/50 text-slate-500 uppercase text-[10px] font-bold tracking-widest">
-                      <tr>
-                        <th className="px-6 py-4 text-left">Student</th>
-                        <th className="px-6 py-4 text-left">Meeting</th>
-                        <th className="px-6 py-4 text-left">Type</th>
-                        <th className="px-6 py-4 text-left">Reason</th>
-                        <th className="px-6 py-4 text-center">Status</th>
-                        <th className="px-6 py-4 text-center">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {absenceRequests.map((request) => (
-                        <tr
-                          key={request.id}
-                          className={`hover:bg-slate-50 transition-colors cursor-pointer ${
-                            selectedRequest?.id === request.id ? 'bg-blue-50' : ''
-                          }`}
-                          onClick={() => setSelectedRequest(request)}
-                        >
-                          <td className="px-6 py-4">
-                            <div>
-                              <p className="font-semibold text-slate-800">{request.name}</p>
-                              <p className="text-xs text-slate-500">{request.division}</p>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div>
-                              <p className="text-slate-700">{request.meetings?.title || 'Unknown'}</p>
-                              <p className="text-xs text-slate-500">
-                                {new Date(request.meetings?.date).toLocaleDateString('en-ID', { day: 'numeric', month: 'short' })}
-                              </p>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                              request.absence_type === 'Izin'
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'bg-purple-100 text-purple-700'
-                            }`}>
-                              {request.absence_type}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 max-w-xs">
-                            <p className="text-slate-600 text-sm truncate">{request.reason}</p>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                              request.status === 'pending'
-                                ? 'bg-yellow-100 text-yellow-700'
-                                : request.status === 'approved'
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-red-100 text-red-700'
-                            }`}>
-                              {request.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            {request.status === 'pending' && (
-                              <div className="flex items-center justify-center gap-2">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleReviewRequest(request.id, 'approved');
-                                  }}
-                                  className="p-1.5 rounded-lg bg-green-100 text-green-600 hover:bg-green-200 transition-colors"
-                                  title="Approve"
-                                >
-                                  <CheckCircle size={16} />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleReviewRequest(request.id, 'rejected');
-                                  }}
-                                  className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
-                                  title="Reject"
-                                >
-                                  <X size={16} />
-                                </button>
-                              </div>
-                            )}
-                            {request.status !== 'pending' && (
-                              <span className="text-xs text-slate-400">Reviewed</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
-
-            {/* Review Panel */}
-            {selectedRequest && (
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-lg font-bold text-slate-800">Review Request</h3>
-                  <button
-                    onClick={() => {
-                      setSelectedRequest(null);
-                      setAdminNote('');
-                    }}
-                    className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
-                  >
-                    <X size={20} className="text-slate-500" />
-                  </button>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-6 mb-6">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-500 mb-1">Student Name</label>
-                    <p className="font-semibold text-slate-800">{selectedRequest.name}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-500 mb-1">Division</label>
-                    <p className="font-semibold text-slate-800">{selectedRequest.division}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-500 mb-1">Meeting</label>
-                    <p className="font-semibold text-slate-800">{selectedRequest.meetings?.title}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-500 mb-1">Absence Type</label>
-                    <p className="font-semibold text-slate-800">{selectedRequest.absence_type}</p>
-                  </div>
-                </div>
-
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-slate-500 mb-1">Reason</label>
-                  <p className="text-slate-700 bg-slate-50 p-3 rounded-xl">{selectedRequest.reason}</p>
-                </div>
-
-                {selectedRequest.attachment_url && (
-                  <div className="mb-6">
-                    <label className="block text-sm font-medium text-slate-500 mb-2">Attachment</label>
-                    <a
-                      href={selectedRequest.attachment_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700"
-                    >
-                      <FileText size={16} />
-                      View Attachment
-                    </a>
-                  </div>
-                )}
-
-                {selectedRequest.admin_note && (
-                  <div className="mb-6">
-                    <label className="block text-sm font-medium text-slate-500 mb-1">Admin Note</label>
-                    <p className="text-slate-700 bg-slate-50 p-3 rounded-xl">{selectedRequest.admin_note}</p>
-                  </div>
-                )}
-
-                {selectedRequest.status === 'pending' && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Admin Note (Optional)</label>
-                    <textarea
-                      value={adminNote}
-                      onChange={(e) => setAdminNote(e.target.value)}
-                      rows={3}
-                      placeholder="Add a note for this request..."
-                      className="w-full border border-slate-200 rounded-xl px-4 py-3 text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                    />
-                    <div className="flex gap-3 mt-4">
-                      <button
-                        onClick={() => handleReviewRequest(selectedRequest.id, 'approved')}
-                        className="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2"
-                      >
-                        <CheckCircle size={18} />
-                        Approve Request
-                      </button>
-                      <button
-                        onClick={() => handleReviewRequest(selectedRequest.id, 'rejected')}
-                        className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2"
-                      >
-                        <X size={18} />
-                        Reject Request
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Photo Preview Modal */}
         {previewPhoto && (

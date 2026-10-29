@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
     name TEXT UNIQUE NOT NULL,
     division TEXT NOT NULL,
     face_descriptor JSONB,
+    attendance_status TEXT NOT NULL DEFAULT 'Aktif' CHECK (attendance_status IN ('Aktif', 'Magang')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -203,6 +204,18 @@ BEGIN
     END IF;
 END
 $$;
+
+-- Add an attendance-status flag for profiles created before this feature.
+-- Magang members remain registered, but are excluded from automatic attendance actions.
+ALTER TABLE public.user_profiles
+    ADD COLUMN IF NOT EXISTS attendance_status TEXT NOT NULL DEFAULT 'Aktif';
+
+ALTER TABLE public.user_profiles
+    DROP CONSTRAINT IF EXISTS user_profiles_attendance_status_check;
+
+ALTER TABLE public.user_profiles
+    ADD CONSTRAINT user_profiles_attendance_status_check
+    CHECK (attendance_status IN ('Aktif', 'Magang'));
 
 -- ============================================
 -- 5. HELPER FUNCTIONS

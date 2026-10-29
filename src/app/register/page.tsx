@@ -155,14 +155,14 @@ export default function RegisterMember() {
             </div>
 
             <div className="group">
-              <label className="block text-xs font-semibold text-violet-300 uppercase mb-2">Divisi</label>
+              <label className="block text-xs font-semibold text-violet-300 uppercase mb-2">Jurusan</label>
               <select
                 value={division}
                 onChange={(e) => setDivision(e.target.value)}
                 required
                 className="w-full bg-slate-800/50 border border-white/10 text-white p-4 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none appearance-none transition-all"
               >
-                <option value="" disabled>Pilih Divisi</option>
+                <option value="" disabled>Pilih Jurusan</option>
                 {DIVISIONS.map(div => (
                   <option key={div} value={div} className="bg-slate-800">{div}</option>
                 ))}

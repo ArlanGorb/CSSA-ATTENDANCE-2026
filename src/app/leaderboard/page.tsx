@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Trophy, Medal, ArrowLeft, Star, CheckCircle } from 'lucide-react';
+import { Trophy, Medal, ArrowLeft, Star, CheckCircle, BookOpen } from 'lucide-react';
 import Link from 'next/link';
 
 interface MemberScore {
@@ -11,6 +11,8 @@ interface MemberScore {
   points: number;
   totalHadir: number;
   totalLate: number;
+  totalSpecialHadir: number; // kehadiran Study Bible + Doa Subuh
+  totalAttendance: number;   // gabungan semua kehadiran
 }
 
 export default function LeaderboardPage() {
@@ -22,33 +24,59 @@ export default function LeaderboardPage() {
   }, []);
 
   const fetchLeaderboard = async () => {
-    const { data: attendances } = await supabase
-      .from('attendance')
-      .select('name, division, status');
+    // Fetch meeting attendance dan special event attendance secara paralel
+    const [{ data: attendances }, { data: specialAttendances }] = await Promise.all([
+      supabase.from('attendance').select('name, division, status'),
+      supabase.from('special_event_attendance').select('name, division, status'),
+    ]);
 
     const scores: Record<string, MemberScore> = {};
 
+    // Hitung dari meeting biasa
     attendances?.forEach((record) => {
-      // Normalize name to handle slight variations
-      const normalizedName = record.name.trim().toUpperCase();
-
-      if (!scores[normalizedName]) {
-        scores[normalizedName] = { 
-          name: record.name.trim(), 
-          division: record.division, 
-          points: 0, 
+      const key = record.name.trim().toUpperCase();
+      if (!scores[key]) {
+        scores[key] = {
+          name: record.name.trim(),
+          division: record.division,
+          points: 0,
           totalHadir: 0,
-          totalLate: 0
+          totalLate: 0,
+          totalSpecialHadir: 0,
+          totalAttendance: 0,
         };
       }
-      
       if (record.status === 'Hadir') {
-        scores[normalizedName].points += 10;
-        scores[normalizedName].totalHadir += 1;
+        scores[key].points += 10;
+        scores[key].totalHadir += 1;
+        scores[key].totalAttendance += 1;
       } else if (record.status === 'Late') {
-        scores[normalizedName].points += 5;
-        scores[normalizedName].totalLate += 1;
+        scores[key].points += 5;
+        scores[key].totalLate += 1;
+        scores[key].totalAttendance += 1;
       }
+    });
+
+    // Tambahkan dari kegiatan khusus (Study Bible, Doa Subuh)
+    specialAttendances?.forEach((record) => {
+      const key = record.name.trim().toUpperCase();
+      if (!scores[key]) {
+        scores[key] = {
+          name: record.name.trim(),
+          division: record.division,
+          points: 0,
+          totalHadir: 0,
+          totalLate: 0,
+          totalSpecialHadir: 0,
+          totalAttendance: 0,
+        };
+      }
+      if (record.status === 'Hadir') {
+        scores[key].points += 10;
+        scores[key].totalSpecialHadir += 1;
+        scores[key].totalAttendance += 1;
+      }
+      // Izin/Sakit di kegiatan khusus tidak dapat poin tapi tetap dicatat
     });
 
     // Urutkan dari poin terbesar ke terkecil
@@ -118,13 +146,18 @@ export default function LeaderboardPage() {
                             
                             <div>
                                 <h3 className="font-bold text-lg text-white capitalize">{member.name.toLowerCase()}</h3>
-                                <div className="flex items-center gap-2 mt-1">
+                                <div className="flex items-center gap-2 mt-1 flex-wrap">
                                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 uppercase tracking-wider">
                                         {member.division}
                                     </span>
                                     <span className="text-xs text-slate-400 flex items-center gap-1">
-                                        <CheckCircle size={10} className="text-green-400"/> {member.totalHadir} On-time
+                                        <CheckCircle size={10} className="text-green-400"/> {member.totalHadir} Hadir
                                     </span>
+                                    {member.totalSpecialHadir > 0 && (
+                                      <span className="text-xs text-slate-400 flex items-center gap-1">
+                                          <BookOpen size={10} className="text-purple-400"/> {member.totalSpecialHadir} Khusus
+                                      </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
